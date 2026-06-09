@@ -1,4 +1,4 @@
-import { LayoutDashboard, LogIn, Users as UsersIcon, FileBarChart, LogOut, ClipboardCheck } from 'lucide-react';
+import { LayoutDashboard, LogIn, Users as UsersIcon, FileBarChart, LogOut, ClipboardCheck, User } from 'lucide-react';
 import { ViewTab } from '../types';
 
 // @ts-ignore
@@ -92,11 +92,9 @@ export default function Sidebar({ currentTab, onTabChange, onLogout, selectedUse
 
         {/* Logged in Admin profile info */}
         <div className="flex items-center gap-3 pt-2">
-          <img
-            alt="Admin User Profile"
-            className="w-10 h-10 rounded-full border border-primary/20 object-cover"
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBo5nlil7m-Lv_jDtjTTZdy1TSVgSkLZsS5GwPpdHkfyLKgc1oNQn81wRXC5NDYLDbTLQ0NaodeeXsv1jN84GillMmzs5Fg11YxwP9N1lfxwxei9rsbhVbTxs6IhjqvFT9XBfxbuN87ZstWNgH0tbIq0HzV0oc0c8JlTOoTg_ssCejlQ6u2qcM6Wa4Xw6HN2oNz7xx-T_EeD3l2FVbxuz4Gv14TBImn_pkzcR7IfB3i-xNGUe0QfWlOGZyvdo9U8WpxA1LgJ3BmEYM"
-          />
+          <div className="w-10 h-10 rounded-full border border-primary/20 bg-primary/10 flex items-center justify-center text-primary shrink-0">
+            <User className="w-5 h-5" />
+          </div>
           <div className="overflow-hidden">
             <p className="font-bold text-sm text-primary truncate">Admin User</p>
             <p className="text-[11px] text-on-surface-variant font-medium truncate">System Manager</p>

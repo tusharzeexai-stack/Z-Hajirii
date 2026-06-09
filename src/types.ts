@@ -6,7 +6,9 @@ export interface Employee {
   avatarUrl: string;
   empId: string;
   activeNow: boolean;
+  createdAt?: string;
 }
+
 
 export interface AttendanceRecord {
   id: string;

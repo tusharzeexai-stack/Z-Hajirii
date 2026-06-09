@@ -109,10 +109,12 @@ export default function App() {
   const [employees, setEmployees] = useState<Employee[]>(INITIAL_EMPLOYEES);
   const [attendanceLogs, setAttendanceLogs] = useState<AttendanceRecord[]>(INITIAL_ATTENDANCE_LOGS);
   const [selectedEmployeeForProfile, setSelectedEmployeeForProfile] = useState<Employee | null>(null);
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
   // Global Search / Filters
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [trendFilter, setTrendFilter] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
   const [roleFilter, setRoleFilter] = useState<string>('All Roles');
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
 
@@ -120,12 +122,344 @@ export default function App() {
   const [selectedAttendanceDate, setSelectedAttendanceDate] = useState<string>(todayDateString);
   const [attendanceStatusFilter, setAttendanceStatusFilter] = useState<string>('All Statuses');
 
+  // Dashboard Date State
+  const [dashboardDate, setDashboardDate] = useState<string>(todayDateString);
+  const dashboardFullDateString = useMemo(() => {
+    const parsed = parseDateString(dashboardDate);
+    return parsed.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  }, [dashboardDate]);
+
   // Unique Dates for Attendance filter dropdown
   const uniqueAttendanceDates = useMemo(() => {
-    const datesSet = new Set(attendanceLogs.map(l => l.date));
+    const datesSet = new Set<string>(attendanceLogs.map(l => l.date));
     datesSet.add(todayDateString); // always include today
-    return Array.from(datesSet).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+    return (Array.from(datesSet) as string[]).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
   }, [attendanceLogs, todayDateString]);
+
+  // Helper to get dates for the current week (Monday to Sunday)
+  const currentWeekDates = useMemo(() => {
+    const current = new Date();
+    const currentDay = current.getDay();
+    const distanceToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+    
+    const monday = new Date(current);
+    monday.setDate(current.getDate() + distanceToMonday);
+    
+    const dates: Date[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      dates.push(d);
+    }
+    return dates;
+  }, []);
+
+  // Weekly attendance data calculated from live logs of the SELECTED employee
+  const weeklyData = useMemo(() => {
+    const today = new Date();
+    if (!selectedEmployeeForProfile) return [];
+
+    return currentWeekDates.map((dateObj, index) => {
+      const dateStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const isFuture = dateObj.getTime() > new Date().setHours(23, 59, 59, 999);
+      
+      const isToday = dateObj.getDate() === today.getDate() &&
+                      dateObj.getMonth() === today.getMonth() &&
+                      dateObj.getFullYear() === today.getFullYear();
+
+      if (isFuture) {
+        return {
+          label: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][index],
+          present: 0,
+          late: 0,
+          absent: 0,
+          presentPercent: 0,
+          latePercent: 0,
+          absentPercent: 0,
+          isToday: false,
+          isWeekend: false,
+          total: 0
+        };
+      }
+
+      // Check if this date is strictly before the employee's creation date (at day level)
+      if (selectedEmployeeForProfile.createdAt) {
+        const createdDate = new Date(selectedEmployeeForProfile.createdAt);
+        const dateMidnight = new Date(dateObj);
+        dateMidnight.setHours(0, 0, 0, 0);
+        const createdMidnight = new Date(createdDate);
+        createdMidnight.setHours(0, 0, 0, 0);
+        
+        if (dateMidnight.getTime() < createdMidnight.getTime()) {
+          return {
+            label: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][index],
+            present: 0,
+            late: 0,
+            absent: 0,
+            presentPercent: 0,
+            latePercent: 0,
+            absentPercent: 0,
+            isToday: false,
+            isWeekend: false,
+            total: 0
+          };
+        }
+      }
+
+      const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+      
+      // Find log for the selected employee on this date
+      const log = attendanceLogs.find(l => l.employeeId === selectedEmployeeForProfile.id && l.date === dateStr);
+      
+      // If weekend and no log recorded, don't count absent
+      if (isWeekend && !log) {
+        return {
+          label: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][index],
+          present: 0,
+          late: 0,
+          absent: 0,
+          presentPercent: 0,
+          latePercent: 0,
+          absentPercent: 0,
+          isToday,
+          isWeekend: true,
+          total: 0
+        };
+      }
+
+      let present = 0;
+      let late = 0;
+      let absent = 0;
+
+      if (log) {
+        if (log.status === 'Present') present = 1;
+        else if (log.status === 'Late') late = 1;
+        else if (log.status === 'Absent') absent = 1;
+      } else {
+        const dayOfWeek = dateObj.getDay();
+        const isPastDay = dateObj.getTime() < new Date().setHours(0, 0, 0, 0);
+        const isWeekday = dayOfWeek !== 0 && dayOfWeek !== 6;
+
+        if (isPastDay && isWeekday) {
+          absent = 1;
+        } else {
+          return {
+            label: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][index],
+            present: 0,
+            late: 0,
+            absent: 0,
+            presentPercent: 0,
+            latePercent: 0,
+            absentPercent: 0,
+            isToday,
+            isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
+            total: 0
+          };
+        }
+      }
+
+      const total = present + late + absent;
+      const presentPercent = total > 0 ? (present / total) * 100 : 0;
+      const latePercent = total > 0 ? (late / total) * 100 : 0;
+      const absentPercent = total > 0 ? (absent / total) * 100 : 0;
+
+      return {
+        label: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][index],
+        present,
+        late,
+        absent,
+        presentPercent,
+        latePercent,
+        absentPercent,
+        isToday,
+        isWeekend: false,
+        total
+      };
+    });
+  }, [currentWeekDates, selectedEmployeeForProfile, attendanceLogs]);
+
+  // Monthly attendance data calculated from live logs of the SELECTED employee
+  const monthlyData = useMemo(() => {
+    if (!selectedEmployeeForProfile) return [];
+    
+    const currentYear = new Date().getFullYear().toString();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const currentMonthIdx = new Date().getMonth();
+
+    return months.map((monthName, index) => {
+      if (index > currentMonthIdx) {
+        return {
+          label: monthName,
+          present: 0,
+          late: 0,
+          absent: 0,
+          presentPercent: 0,
+          latePercent: 0,
+          absentPercent: 0,
+          isCurrent: false,
+          total: 0
+        };
+      }
+
+      // Check if this month is before the employee's creation month
+      if (selectedEmployeeForProfile.createdAt) {
+        const createdDate = new Date(selectedEmployeeForProfile.createdAt);
+        const createdYear = createdDate.getFullYear();
+        const createdMonth = createdDate.getMonth();
+        const yearInt = parseInt(currentYear);
+
+        if (yearInt < createdYear || (yearInt === createdYear && index < createdMonth)) {
+          return {
+            label: monthName,
+            present: 0,
+            late: 0,
+            absent: 0,
+            presentPercent: 0,
+            latePercent: 0,
+            absentPercent: 0,
+            isCurrent: false,
+            total: 0
+          };
+        }
+      }
+
+      // Filter logs of the selected employee in this month
+      const logsInMonth = attendanceLogs.filter(log => {
+        const parts = log.date.split(' ');
+        const logMonth = parts[0];
+        const logYear = parts[2] || '';
+        return log.employeeId === selectedEmployeeForProfile.id && logMonth === monthName && logYear.includes(currentYear);
+      });
+
+      // If no logs recorded at all for this month, show empty
+      if (logsInMonth.length === 0) {
+        return {
+          label: monthName,
+          present: 0,
+          late: 0,
+          absent: 0,
+          presentPercent: 0,
+          latePercent: 0,
+          absentPercent: 0,
+          isCurrent: index === currentMonthIdx,
+          total: 0
+        };
+      }
+
+      let present = 0;
+      let late = 0;
+      let absent = 0;
+
+      logsInMonth.forEach(log => {
+        if (log.status === 'Present') present++;
+        else if (log.status === 'Late') late++;
+        else if (log.status === 'Absent') absent++;
+      });
+
+      const total = present + late + absent;
+      const presentPercent = total > 0 ? (present / total) * 100 : 0;
+      const latePercent = total > 0 ? (late / total) * 100 : 0;
+      const absentPercent = total > 0 ? (absent / total) * 100 : 0;
+
+      return {
+        label: monthName,
+        present,
+        late,
+        absent,
+        presentPercent,
+        latePercent,
+        absentPercent,
+        isCurrent: index === currentMonthIdx,
+        total
+      };
+    });
+  }, [selectedEmployeeForProfile, attendanceLogs]);
+
+  // Yearly attendance data calculated from live logs of the SELECTED employee
+  const yearlyData = useMemo(() => {
+    if (!selectedEmployeeForProfile) return [];
+
+    const years = ['2022', '2023', '2024', '2025', '2026'];
+    const currentYear = new Date().getFullYear().toString();
+
+    return years.map(yearName => {
+      const logsInYear = attendanceLogs.filter(log => {
+        const parts = log.date.split(' ');
+        const logYear = parts[2] || '';
+        return log.employeeId === selectedEmployeeForProfile.id && logYear.includes(yearName);
+      });
+
+      // Check if this year is before the employee's creation year
+      if (selectedEmployeeForProfile.createdAt) {
+        const createdDate = new Date(selectedEmployeeForProfile.createdAt);
+        const createdYear = createdDate.getFullYear();
+        const yearInt = parseInt(yearName);
+
+        if (yearInt < createdYear) {
+          return {
+            label: yearName,
+            present: 0,
+            late: 0,
+            absent: 0,
+            presentPercent: 0,
+            latePercent: 0,
+            absentPercent: 0,
+            isCurrent: yearName === currentYear,
+            total: 0
+          };
+        }
+      }
+
+      // If no logs for this year, show empty
+      if (logsInYear.length === 0) {
+        return {
+          label: yearName,
+          present: 0,
+          late: 0,
+          absent: 0,
+          presentPercent: 0,
+          latePercent: 0,
+          absentPercent: 0,
+          isCurrent: yearName === currentYear,
+          total: 0
+        };
+      }
+
+      let present = 0;
+      let late = 0;
+      let absent = 0;
+
+      logsInYear.forEach(log => {
+        if (log.status === 'Present') present++;
+        else if (log.status === 'Late') late++;
+        else if (log.status === 'Absent') absent++;
+      });
+
+      const total = present + late + absent;
+      const presentPercent = total > 0 ? (present / total) * 100 : 0;
+      const latePercent = total > 0 ? (late / total) * 100 : 0;
+      const absentPercent = total > 0 ? (absent / total) * 100 : 0;
+
+      return {
+        label: yearName,
+        present,
+        late,
+        absent,
+        presentPercent,
+        latePercent,
+        absentPercent,
+        isCurrent: yearName === currentYear,
+        total
+      };
+    });
+  }, [selectedEmployeeForProfile, attendanceLogs]);
+
+  // Combined chartData based on selected filter
+  const chartData = useMemo(() => {
+    if (trendFilter === 'weekly') return weeklyData;
+    if (trendFilter === 'monthly') return monthlyData;
+    return yearlyData;
+  }, [trendFilter, weeklyData, monthlyData, yearlyData]);
 
   const [isCalendarOpen, setIsCalendarOpen] = useState<boolean>(false);
   const [calendarViewDate, setCalendarViewDate] = useState<Date>(() => parseDateString(selectedAttendanceDate));
@@ -228,7 +562,8 @@ export default function App() {
         email: emp.email,
         avatarUrl: emp.avatar_url,
         empId: emp.emp_id,
-        activeNow: emp.active_now
+        activeNow: emp.active_now,
+        createdAt: emp.created_at
       }));
       
       // Fetch attendance logs
@@ -293,60 +628,94 @@ export default function App() {
     showToast('Logged out successfully.');
   };
 
-  // Create new Employee flow
-  const handleCreateEmployee = async (e: FormEvent) => {
+  // Create or Update Employee flow
+  const handleSubmitEmployee = async (e: FormEvent) => {
     e.preventDefault();
     if (!newEmpName.trim() || !newEmpEmail.trim() || !newEmpId.trim()) {
       showToast('Please fill in all required fields.');
       return;
     }
 
-    const newEmpIdStr = `emp-${Date.now()}`;
-    const avatar = newEmpAvatar.trim() || `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random() * 999999)}?auto=format&fit=crop&q=80&w=150`;
-
-    const dbEmp = {
-      id: newEmpIdStr,
-      name: newEmpName.trim(),
-      role: selectedRoles.join(', '),
-      email: newEmpEmail.trim(),
-      emp_id: newEmpId.trim().toUpperCase(),
-      avatar_url: avatar,
-      active_now: true
-    };
-
-    try {
-      const { error: empErr } = await supabase.from('employees').insert(dbEmp);
-      if (empErr) throw empErr;
-
-      // Also auto-create a default Present log for today
-      const now = new Date();
-      const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-      const dbLog = {
-        id: `rec-${Date.now()}`,
-        employee_id: newEmpIdStr,
-        date: todayDateString,
-        clock_in: timeStr,
-        clock_out: '--:--',
-        total_hours: '0h 00m',
-        status: 'Present'
+    if (editingEmployee) {
+      // Edit mode
+      const dbEmp = {
+        name: newEmpName.trim(),
+        role: selectedRoles.join(', '),
+        email: newEmpEmail.trim(),
+        emp_id: newEmpId.trim().toUpperCase(),
+        avatar_url: newEmpAvatar.trim() || editingEmployee.avatarUrl
       };
-      
-      const { error: logErr } = await supabase.from('attendance_logs').insert(dbLog);
-      if (logErr) throw logErr;
 
-      setIsCreateModalOpen(false);
-      // Reset forms
-      setNewEmpName('');
-      setSelectedRoles(['Software Engineer']);
-      setNewEmpEmail('');
-      setNewEmpId('');
-      setNewEmpAvatar('');
-      showToast(`Employee ${dbEmp.name} created successfully!`);
-      
-      await fetchData();
-    } catch (err) {
-      console.error(err);
-      showToast('Failed to create employee in database.');
+      try {
+        const { error } = await supabase
+          .from('employees')
+          .update(dbEmp)
+          .eq('id', editingEmployee.id);
+        
+        if (error) throw error;
+
+        setIsCreateModalOpen(false);
+        setEditingEmployee(null);
+        // Reset forms
+        setNewEmpName('');
+        setSelectedRoles(['Software Engineer']);
+        setNewEmpEmail('');
+        setNewEmpId('');
+        setNewEmpAvatar('');
+        showToast(`Employee ${dbEmp.name} updated successfully!`);
+        await fetchData();
+      } catch (err) {
+        console.error(err);
+        showToast('Failed to update employee in database.');
+      }
+    } else {
+      // Create mode
+      const newEmpIdStr = `emp-${Date.now()}`;
+      const avatar = newEmpAvatar.trim() || `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random() * 999999)}?auto=format&fit=crop&q=80&w=150`;
+
+      const dbEmp = {
+        id: newEmpIdStr,
+        name: newEmpName.trim(),
+        role: selectedRoles.join(', '),
+        email: newEmpEmail.trim(),
+        emp_id: newEmpId.trim().toUpperCase(),
+        avatar_url: avatar,
+        active_now: true
+      };
+
+      try {
+        const { error: empErr } = await supabase.from('employees').insert(dbEmp);
+        if (empErr) throw empErr;
+
+        // Also auto-create a default Present log for today
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+        const dbLog = {
+          id: `rec-${Date.now()}`,
+          employee_id: newEmpIdStr,
+          date: todayDateString,
+          clock_in: timeStr,
+          clock_out: '--:--',
+          total_hours: '0h 00m',
+          status: 'Present'
+        };
+        
+        const { error: logErr } = await supabase.from('attendance_logs').insert(dbLog);
+        if (logErr) throw logErr;
+
+        setIsCreateModalOpen(false);
+        // Reset forms
+        setNewEmpName('');
+        setSelectedRoles(['Software Engineer']);
+        setNewEmpEmail('');
+        setNewEmpId('');
+        setNewEmpAvatar('');
+        showToast(`Employee ${dbEmp.name} created successfully!`);
+        await fetchData();
+      } catch (err) {
+        console.error(err);
+        showToast('Failed to create employee in database.');
+      }
     }
   };
 
@@ -497,14 +866,14 @@ export default function App() {
     let late = 0;
 
     employees.forEach(emp => {
-      // Find today's log
-      const todayLog = attendanceLogs.find(log => log.employeeId === emp.id && log.date === todayDateString);
+      // Find log for the selected dashboard date
+      const todayLog = attendanceLogs.find(log => log.employeeId === emp.id && log.date === dashboardDate);
       if (todayLog) {
         if (todayLog.status === 'Present') present += 1;
         else if (todayLog.status === 'Absent') absent += 1;
         else if (todayLog.status === 'Late') late += 1;
       } else {
-        // If no log is registered for today, assume absent or un-logged
+        // If no log is registered for this date, assume absent or un-logged
         absent += 1;
       }
     });
@@ -515,7 +884,7 @@ export default function App() {
       absent,
       late
     };
-  }, [employees, attendanceLogs]);
+  }, [employees, attendanceLogs, dashboardDate]);
 
   // Dynamic profile report stats calculations for the selected employee
   const profileStats = useMemo(() => {
@@ -817,7 +1186,7 @@ export default function App() {
             )}
 
             {/* Main scrollable view block */}
-            <div className="flex-1 lg:ml-64 p-4 sm:p-6 pb-24 sm:pb-28 lg:pb-6 overflow-y-auto max-w-[1400px] mx-auto w-full space-y-6">
+            <div className="flex-1 lg:ml-64 p-4 sm:p-6 pb-24 sm:pb-28 lg:pb-6 overflow-y-auto w-full space-y-6">
               {loading ? (
                 <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
                   <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
@@ -832,12 +1201,29 @@ export default function App() {
                   <section className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                       <h2 className="text-3xl font-bold text-primary tracking-tight">Attendance Dashboard</h2>
-                      <p className="text-sm text-on-surface-variant font-medium">Real-time presence tracking for {todayFullDateString}</p>
+                      <p className="text-sm text-on-surface-variant font-medium">Real-time presence tracking for {dashboardFullDateString}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap">
-                      <div className="flex items-center bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 cursor-pointer hover:bg-surface-container-low transition-all">
+                      <div className="flex items-center bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 hover:bg-surface-container-low transition-all">
                         <span className="mr-2 text-primary font-bold text-xs uppercase tracking-wider">Date:</span>
-                        <span className="font-semibold text-sm">{todayDateString}</span>
+                        <input
+                          type="date"
+                          value={(() => {
+                            const d = parseDateString(dashboardDate);
+                            const yyyy = d.getFullYear();
+                            const mm = String(d.getMonth() + 1).padStart(2, '0');
+                            const dd = String(d.getDate()).padStart(2, '0');
+                            return `${yyyy}-${mm}-${dd}`;
+                          })()}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              const [year, month, day] = e.target.value.split('-').map(Number);
+                              const d = new Date(year, month - 1, day);
+                              setDashboardDate(formatDateString(d));
+                            }
+                          }}
+                          className="bg-transparent border-none font-semibold text-sm text-primary focus:outline-none cursor-pointer focus:ring-0 p-0"
+                        />
                       </div>
                       <button
                         onClick={() => showToast('Attendance records archived and saved securely.')}
@@ -928,8 +1314,8 @@ export default function App() {
                         </thead>
                         <tbody className="divide-y divide-outline-variant/50">
                           {filteredEmployees.map((emp) => {
-                             // Find log for today
-                             const log = attendanceLogs.find(l => l.employeeId === emp.id && l.date === todayDateString);
+                             // Find log for dashboardDate
+                             const log = attendanceLogs.find(l => l.employeeId === emp.id && l.date === dashboardDate);
                             const status = log ? log.status : 'Absent'; // default un-logged as Absent
                             
                             return (
@@ -968,7 +1354,7 @@ export default function App() {
                                   <div className="flex items-center justify-center gap-2">
                                     <button
                                       title="Mark Present"
-                                      onClick={() => handleUpdateStatus(emp.id, 'Present')}
+                                      onClick={() => handleUpdateStatus(emp.id, 'Present', dashboardDate)}
                                       className={`p-1.5 rounded-full border transition-all ${
                                         status === 'Present'
                                           ? 'bg-emerald-600 text-white border-emerald-600'
@@ -979,7 +1365,7 @@ export default function App() {
                                     </button>
                                     <button
                                       title="Mark Absent"
-                                      onClick={() => handleUpdateStatus(emp.id, 'Absent')}
+                                      onClick={() => handleUpdateStatus(emp.id, 'Absent', dashboardDate)}
                                       className={`p-1.5 rounded-full border transition-all ${
                                         status === 'Absent'
                                           ? 'bg-error text-white border-error'
@@ -990,7 +1376,7 @@ export default function App() {
                                     </button>
                                     <button
                                       title="Mark Late"
-                                      onClick={() => handleUpdateStatus(emp.id, 'Late')}
+                                      onClick={() => handleUpdateStatus(emp.id, 'Late', dashboardDate)}
                                       className={`p-1.5 rounded-full border transition-all ${
                                         status === 'Late'
                                           ? 'bg-amber-600 text-white border-amber-600'
@@ -1334,7 +1720,15 @@ export default function App() {
                       <p className="text-sm text-on-surface-variant font-medium">Configure and monitor system access for {employees.length} active employees.</p>
                     </div>
                     <button
-                      onClick={() => setIsCreateModalOpen(true)}
+                      onClick={() => {
+                        setEditingEmployee(null);
+                        setNewEmpName('');
+                        setSelectedRoles(['Software Engineer']);
+                        setNewEmpEmail('');
+                        setNewEmpId('');
+                        setNewEmpAvatar('');
+                        setIsCreateModalOpen(true);
+                      }}
                       className="bg-primary text-on-primary px-5 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 hover:brightness-110 active:scale-95 transition-all shadow-md"
                     >
                       <UserPlus className="w-5 h-5" />
@@ -1392,9 +1786,13 @@ export default function App() {
                           <button
                             title="Edit User Info"
                             onClick={() => {
-                              setSelectedEmployeeForProfile(emp);
-                              showToast(`Loaded ${emp.name} to edit/profile tab.`);
-                              setCurrentTab('Reports');
+                              setEditingEmployee(emp);
+                              setNewEmpName(emp.name);
+                              setNewEmpId(emp.empId);
+                              setNewEmpEmail(emp.email);
+                              setSelectedRoles(emp.role.split(',').map(r => r.trim()));
+                              setNewEmpAvatar(emp.avatarUrl);
+                              setIsCreateModalOpen(true);
                             }}
                             className="p-2 bg-surface-container-high rounded-lg text-primary hover:bg-primary hover:text-on-primary transition-all"
                           >
@@ -1643,37 +2041,117 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Monthly Trends chart */}
+                    {/* Attendance Trends chart */}
                     <div className="bg-surface-container-lowest custom-shadow rounded-xl p-6 lg:col-span-2">
-                      <div className="flex items-center justify-between mb-6">
-                        <h3 className="font-bold text-lg text-on-surface">Monthly Attendance Trend</h3>
-                        <div className="flex gap-1.5 bg-surface-container-low p-1 rounded-lg text-xs">
-                          <button className="px-2 py-1 rounded hover:bg-white font-semibold">Jan-Jul</button>
-                          <button className="px-2 py-1 rounded bg-white font-semibold shadow-sm text-primary">Aug-Dec</button>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                        <h3 className="font-bold text-lg text-on-surface capitalize">{trendFilter} Attendance Trend</h3>
+                        
+                        <div className="flex gap-1 bg-surface-container-low p-1 rounded-lg text-xs">
+                          <button 
+                            onClick={() => setTrendFilter('weekly')}
+                            className={`px-3 py-1.5 rounded-md font-semibold transition-all cursor-pointer ${trendFilter === 'weekly' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/50'}`}
+                          >
+                            Weekly
+                          </button>
+                          <button 
+                            onClick={() => setTrendFilter('monthly')}
+                            className={`px-3 py-1.5 rounded-md font-semibold transition-all cursor-pointer ${trendFilter === 'monthly' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/50'}`}
+                          >
+                            Monthly
+                          </button>
+                          <button 
+                            onClick={() => setTrendFilter('yearly')}
+                            className={`px-3 py-1.5 rounded-md font-semibold transition-all cursor-pointer ${trendFilter === 'yearly' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/50'}`}
+                          >
+                            Yearly
+                          </button>
                         </div>
                       </div>
                       
-                      {/* Simulating custom vector bars */}
-                      <div className="h-64 relative flex items-end justify-between gap-4 px-4 pt-8">
-                        <div className="flex-1 bg-primary/10 rounded-t-lg transition-all hover:bg-primary/30" style={{ height: '85%' }}></div>
-                        <div className="flex-1 bg-primary/10 rounded-t-lg transition-all hover:bg-primary/30" style={{ height: '92%' }}></div>
-                        <div className="flex-1 bg-primary/10 rounded-t-lg transition-all hover:bg-primary/30" style={{ height: '78%' }}></div>
-                        <div className="flex-1 bg-primary/10 rounded-t-lg transition-all hover:bg-primary/30" style={{ height: '95%' }}></div>
-                        <div className="flex-1 bg-primary/10 rounded-t-lg transition-all hover:bg-primary/30" style={{ height: '88%' }}></div>
-                        <div className="relative flex-1 bg-primary rounded-t-lg transition-all hover:brightness-110" style={{ height: '98%' }}>
-                          <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-primary text-on-primary text-[10px] font-bold px-1.5 py-0.5 rounded">98%</span>
-                        </div>
-                        <div className="flex-1 bg-primary/10 rounded-t-lg transition-all hover:bg-primary/30" style={{ height: '90%' }}></div>
+                      {/* Simulating custom vector bars based on trendFilter */}
+                      <div className="h-64 relative flex items-end justify-between gap-4 px-4 pt-8 border-b border-outline-variant/30 pb-2">
+                        {chartData.map((item, index) => {
+                          const hasData = item.total > 0;
+                          
+                          return (
+                            <div key={index} className="flex-1 flex flex-col justify-end h-full relative group">
+                              {/* Stacked Bar container */}
+                              {hasData ? (
+                                <div className={`w-full flex flex-col justify-end rounded-t-md overflow-hidden transition-all duration-300 ${item.isToday || item.isCurrent ? 'ring-2 ring-primary ring-offset-2' : ''}`} style={{ height: '100%' }}>
+                                  {/* Present Segment */}
+                                  {item.presentPercent > 0 && (
+                                    <div 
+                                      className="bg-emerald-500 hover:brightness-105 transition-all" 
+                                      style={{ height: `${item.presentPercent}%` }}
+                                      title={`Present: ${item.presentPercent.toFixed(0)}%`}
+                                    />
+                                  )}
+                                  {/* Late Segment */}
+                                  {item.latePercent > 0 && (
+                                    <div 
+                                      className="bg-amber-500 hover:brightness-105 transition-all" 
+                                      style={{ height: `${item.latePercent}%` }}
+                                      title={`Late: ${item.latePercent.toFixed(0)}%`}
+                                    />
+                                  )}
+                                  {/* Absent Segment */}
+                                  {item.absentPercent > 0 && (
+                                    <div 
+                                      className="bg-red-500 hover:brightness-105 transition-all" 
+                                      style={{ height: `${item.absentPercent}%` }}
+                                      title={`Absent: ${item.absentPercent.toFixed(0)}%`}
+                                    />
+                                  )}
+                                </div>
+                              ) : (
+                                /* No Data placeholder (e.g. future date or weekend) */
+                                <div className="w-full h-1 bg-outline-variant/20 rounded-full" />
+                              )}
+
+                              {/* Tooltip on hover */}
+                              {hasData && (
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-900/95 backdrop-blur-md text-white text-[10px] p-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10 whitespace-nowrap border border-white/10">
+                                  <p className="font-bold text-center border-b border-white/10 pb-1 mb-1">{item.label} Attendance</p>
+                                  <p className="flex items-center gap-1.5"><span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Present: {item.present} ({item.presentPercent.toFixed(0)}%)</p>
+                                  <p className="flex items-center gap-1.5"><span className="w-2 h-2 bg-amber-500 rounded-full"></span> Late: {item.late} ({item.latePercent.toFixed(0)}%)</p>
+                                  <p className="flex items-center gap-1.5"><span className="w-2 h-2 bg-red-500 rounded-full"></span> Absent: {item.absent} ({item.absentPercent.toFixed(0)}%)</p>
+                                </div>
+                              )}
+                              
+                              {/* Weekend label indicator */}
+                              {item.isWeekend && (
+                                <span className="absolute inset-0 flex items-center justify-center text-[9px] font-semibold text-on-surface-variant/40 select-none pointer-events-none rotate-90 sm:rotate-0">
+                                  Weekend
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
 
+                      {/* X-Axis labels */}
                       <div className="flex justify-between px-4 mt-4 text-xs font-semibold text-on-surface-variant">
-                        <span>Jan</span>
-                        <span>Feb</span>
-                        <span>Mar</span>
-                        <span>Apr</span>
-                        <span>May</span>
-                        <span className="text-primary font-bold">Jun</span>
-                        <span>Jul</span>
+                        {chartData.map((item, index) => (
+                          <span 
+                            key={index} 
+                            className={`flex-1 text-center truncate ${item.isToday || item.isCurrent ? 'text-primary font-bold' : ''}`}
+                          >
+                            {item.label}
+                          </span>
+                        ))}
+                      </div>
+
+                      {/* Legend */}
+                      <div className="flex justify-center gap-6 mt-6 pt-4 border-t border-outline-variant/30 text-xs font-semibold">
+                        <span className="flex items-center gap-2 text-on-surface-variant">
+                          <span className="w-3 h-3 bg-emerald-500 rounded-full"></span> Present
+                        </span>
+                        <span className="flex items-center gap-2 text-on-surface-variant">
+                          <span className="w-3 h-3 bg-amber-500 rounded-full"></span> Late
+                        </span>
+                        <span className="flex items-center gap-2 text-on-surface-variant">
+                          <span className="w-3 h-3 bg-red-500 rounded-full"></span> Absent
+                        </span>
                       </div>
                     </div>
                   </section>
@@ -1796,15 +2274,15 @@ export default function App() {
           <div className="relative bg-white rounded-xl w-full max-w-lg overflow-hidden custom-shadow border border-outline-variant/50 animate-bounce-short">
             <div className="bg-primary p-4 text-on-primary flex justify-between items-center">
               <h3 className="font-bold text-lg flex items-center gap-2">
-                <UserPlus className="w-5 h-5 text-emerald-400" />
-                Add New Corporate User
+                {editingEmployee ? <Edit2 className="w-5 h-5 text-emerald-400" /> : <UserPlus className="w-5 h-5 text-emerald-400" />}
+                {editingEmployee ? 'Edit Corporate User' : 'Add New Corporate User'}
               </h3>
               <button onClick={() => setIsCreateModalOpen(false)} className="rounded-full hover:bg-white/20 p-1 text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateEmployee} className="p-6 space-y-4 max-h-[calc(100vh-160px)] overflow-y-auto">
+            <form onSubmit={handleSubmitEmployee} className="p-6 space-y-4 max-h-[calc(100vh-160px)] overflow-y-auto">
               <div>
                 <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
                   Full Name *
@@ -1951,7 +2429,7 @@ export default function App() {
                   type="submit"
                   className="px-5 py-2 bg-primary text-on-primary rounded-lg text-sm font-semibold hover:brightness-110 shadow-md"
                 >
-                  Create User
+                  {editingEmployee ? 'Save Changes' : 'Create User'}
                 </button>
               </div>
             </form>

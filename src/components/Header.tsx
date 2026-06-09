@@ -1,4 +1,4 @@
-import { Search, Bell, Settings, Menu } from 'lucide-react';
+import { Search, Bell, Settings, Menu, User } from 'lucide-react';
 
 interface HeaderProps {
   onMobileMenuToggle: () => void;
@@ -38,11 +38,9 @@ export default function Header({ onMobileMenuToggle, searchTerm, onSearchChange,
           <Settings className="w-5 h-5" />
         </button>
         <div className="h-8 w-px bg-outline-variant mx-1 sm:mx-2 hidden sm:block"></div>
-        <img
-          alt="User Avatar"
-          className="w-8 h-8 rounded-full border border-primary/20 object-cover"
-          src="https://lh3.googleusercontent.com/aida-public/AB6AXuCkZwRbUnvhvgdboGhWLfdGjG0z_AS8emS75B2q4jKx3NtyyLy8-Eh49TOdEMZHOLmnxIY1j30k5yCCKYbrMIYZGrb5157wYu-_9JyPjdkrQWREJYHgC5DjLADK2Oxryq0oUeQn-mc-ONqskclb08uQpQg7IpswYLl66RhxQ6haWr_Fte4K__jF7GnHgPBYpJez0i2It8lTn-2GA4s6WPB3foVV9DFv970e8ZicKVUWD_j0IXupgu9JGSj4LiH-fJmmXz1OU0R5Ewo"
-        />
+        <div className="w-8 h-8 rounded-full border border-primary/20 bg-primary/10 flex items-center justify-center text-primary shrink-0">
+          <User className="w-4 h-4" />
+        </div>
       </div>
     </header>
   );

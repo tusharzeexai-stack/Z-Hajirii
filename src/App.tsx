@@ -60,6 +60,67 @@ const calculateDuration = (inTime: string, outTime: string) => {
   }
 };
 
+// Parse "Xh Ym" formatted total hours to decimal hours
+const parseTotalHoursToDecimal = (totalHoursStr: string): number => {
+  if (!totalHoursStr || totalHoursStr === '0h 00m' || totalHoursStr === '--:--') return 0;
+  try {
+    const parts = totalHoursStr.match(/(\d+)h\s*(\d+)m/i);
+    if (!parts) return 0;
+    const hours = parseInt(parts[1], 10);
+    const minutes = parseInt(parts[2], 10);
+    return hours + minutes / 60;
+  } catch (err) {
+    console.error(err);
+    return 0;
+  }
+};
+
+// Convert "hh:mm AM/PM" to "HH:mm" (24-hour)
+const time12To24 = (time12: string): string => {
+  if (!time12 || time12 === '--:--') return '';
+  const parts = time12.match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if (!parts) return '';
+  let hours = parseInt(parts[1], 10);
+  const minutes = parts[2];
+  const modifier = parts[3].toUpperCase();
+  if (modifier === 'PM' && hours < 12) hours += 12;
+  if (modifier === 'AM' && hours === 12) hours = 0;
+  return `${String(hours).padStart(2, '0')}:${minutes}`;
+};
+
+// Convert "HH:mm" (24-hour) to "hh:mm AM/PM"
+const time24To12 = (time24: string): string => {
+  if (!time24) return '--:--';
+  const parts = time24.split(':');
+  if (parts.length < 2) return '--:--';
+  let hours = parseInt(parts[0], 10);
+  const minutes = parts[1];
+  const modifier = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12; // the hour '0' should be '12'
+  return `${String(hours).padStart(2, '0')}:${minutes} ${modifier}`;
+};
+
+// Calculate minutes late if clock in time exceeds 12:00 PM (noon)
+const calculateMinutesLate = (clockInStr: string): number => {
+  if (!clockInStr || clockInStr === '--:--') return 0;
+  const parts = clockInStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if (!parts) return 0;
+  let hours = parseInt(parts[1], 10);
+  const minutes = parseInt(parts[2], 10);
+  const modifier = parts[3].toUpperCase();
+  if (modifier === 'PM' && hours < 12) hours += 12;
+  if (modifier === 'AM' && hours === 12) hours = 0;
+  
+  const totalMins = hours * 60 + minutes;
+  const targetMins = 12 * 60; // 12:00 PM is 720 minutes
+  
+  if (totalMins > targetMins) {
+    return totalMins - targetMins;
+  }
+  return 0;
+};
+
 const parseDateString = (dateStr: string): Date => {
   const d = new Date(dateStr);
   return isNaN(d.getTime()) ? new Date() : d;
@@ -111,6 +172,15 @@ export default function App() {
   const [selectedEmployeeForProfile, setSelectedEmployeeForProfile] = useState<Employee | null>(null);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+
+  // Attendance Log Edit State
+  const [editingLogId, setEditingLogId] = useState<string | null>(null);
+  const [editClockIn, setEditClockIn] = useState<string>('');
+  const [editClockOut, setEditClockOut] = useState<string>('');
+  const [editStatus, setEditStatus] = useState<'Present' | 'Absent' | 'Late'>('Present');
+
+  // Chart Metric Toggle State ('status' | 'hours')
+  const [chartMetric, setChartMetric] = useState<'status' | 'hours'>('status');
 
   // Global Search / Filters
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -178,7 +248,8 @@ export default function App() {
           absentPercent: 0,
           isToday: false,
           isWeekend: false,
-          total: 0
+          total: 0,
+          avgWorkingHours: 0
         };
       }
 
@@ -201,7 +272,8 @@ export default function App() {
             absentPercent: 0,
             isToday: false,
             isWeekend: false,
-            total: 0
+            total: 0,
+            avgWorkingHours: 0
           };
         }
       }
@@ -223,18 +295,23 @@ export default function App() {
           absentPercent: 0,
           isToday,
           isWeekend: true,
-          total: 0
+          total: 0,
+          avgWorkingHours: 0
         };
       }
 
       let present = 0;
       let late = 0;
       let absent = 0;
+      let hours = 0;
+      let minsLate = 0;
 
       if (log) {
         if (log.status === 'Present') present = 1;
         else if (log.status === 'Late') late = 1;
         else if (log.status === 'Absent') absent = 1;
+        hours = parseTotalHoursToDecimal(log.totalHours);
+        minsLate = calculateMinutesLate(log.clockIn);
       } else {
         const dayOfWeek = dateObj.getDay();
         const isPastDay = dateObj.getTime() < new Date().setHours(0, 0, 0, 0);
@@ -253,7 +330,9 @@ export default function App() {
             absentPercent: 0,
             isToday,
             isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
-            total: 0
+            total: 0,
+            avgWorkingHours: 0,
+            minsLate: 0
           };
         }
       }
@@ -273,7 +352,9 @@ export default function App() {
         absentPercent,
         isToday,
         isWeekend: false,
-        total
+        total,
+        avgWorkingHours: hours,
+        minsLate
       };
     });
   }, [currentWeekDates, selectedEmployeeForProfile, attendanceLogs]);
@@ -297,7 +378,8 @@ export default function App() {
           latePercent: 0,
           absentPercent: 0,
           isCurrent: false,
-          total: 0
+          total: 0,
+          avgWorkingHours: 0
         };
       }
 
@@ -318,7 +400,9 @@ export default function App() {
             latePercent: 0,
             absentPercent: 0,
             isCurrent: false,
-            total: 0
+            total: 0,
+            avgWorkingHours: 0,
+            minsLate: 0
           };
         }
       }
@@ -342,24 +426,31 @@ export default function App() {
           latePercent: 0,
           absentPercent: 0,
           isCurrent: index === currentMonthIdx,
-          total: 0
+          total: 0,
+          avgWorkingHours: 0,
+          minsLate: 0
         };
       }
 
       let present = 0;
       let late = 0;
       let absent = 0;
+      let totalHoursSum = 0;
+      let totalMinsLate = 0;
 
       logsInMonth.forEach(log => {
         if (log.status === 'Present') present++;
         else if (log.status === 'Late') late++;
         else if (log.status === 'Absent') absent++;
+        totalHoursSum += parseTotalHoursToDecimal(log.totalHours);
+        totalMinsLate += calculateMinutesLate(log.clockIn);
       });
 
       const total = present + late + absent;
       const presentPercent = total > 0 ? (present / total) * 100 : 0;
       const latePercent = total > 0 ? (late / total) * 100 : 0;
       const absentPercent = total > 0 ? (absent / total) * 100 : 0;
+      const avgWorkingHours = logsInMonth.length > 0 ? totalHoursSum / logsInMonth.length : 0;
 
       return {
         label: monthName,
@@ -370,7 +461,9 @@ export default function App() {
         latePercent,
         absentPercent,
         isCurrent: index === currentMonthIdx,
-        total
+        total,
+        avgWorkingHours,
+        minsLate: totalMinsLate
       };
     });
   }, [selectedEmployeeForProfile, attendanceLogs]);
@@ -405,7 +498,9 @@ export default function App() {
             latePercent: 0,
             absentPercent: 0,
             isCurrent: yearName === currentYear,
-            total: 0
+            total: 0,
+            avgWorkingHours: 0,
+            minsLate: 0
           };
         }
       }
@@ -421,24 +516,31 @@ export default function App() {
           latePercent: 0,
           absentPercent: 0,
           isCurrent: yearName === currentYear,
-          total: 0
+          total: 0,
+          avgWorkingHours: 0,
+          minsLate: 0
         };
       }
 
       let present = 0;
       let late = 0;
       let absent = 0;
+      let totalHoursSum = 0;
+      let totalMinsLate = 0;
 
       logsInYear.forEach(log => {
         if (log.status === 'Present') present++;
         else if (log.status === 'Late') late++;
         else if (log.status === 'Absent') absent++;
+        totalHoursSum += parseTotalHoursToDecimal(log.totalHours);
+        totalMinsLate += calculateMinutesLate(log.clockIn);
       });
 
       const total = present + late + absent;
       const presentPercent = total > 0 ? (present / total) * 100 : 0;
       const latePercent = total > 0 ? (late / total) * 100 : 0;
       const absentPercent = total > 0 ? (absent / total) * 100 : 0;
+      const avgWorkingHours = logsInYear.length > 0 ? totalHoursSum / logsInYear.length : 0;
 
       return {
         label: yearName,
@@ -449,7 +551,9 @@ export default function App() {
         latePercent,
         absentPercent,
         isCurrent: yearName === currentYear,
-        total
+        total,
+        avgWorkingHours,
+        minsLate: totalMinsLate
       };
     });
   }, [selectedEmployeeForProfile, attendanceLogs]);
@@ -460,6 +564,17 @@ export default function App() {
     if (trendFilter === 'monthly') return monthlyData;
     return yearlyData;
   }, [trendFilter, weeklyData, monthlyData, yearlyData]);
+
+  // Max hours scale calculator for the working hours chart
+  const maxHoursScale = useMemo(() => {
+    let maxVal = 10; // default minimum ceiling
+    chartData.forEach(item => {
+      if (item.avgWorkingHours && item.avgWorkingHours > maxVal) {
+        maxVal = item.avgWorkingHours;
+      }
+    });
+    return Math.ceil(maxVal);
+  }, [chartData]);
 
   const [isCalendarOpen, setIsCalendarOpen] = useState<boolean>(false);
   const [calendarViewDate, setCalendarViewDate] = useState<Date>(() => parseDateString(selectedAttendanceDate));
@@ -690,6 +805,7 @@ export default function App() {
         // Also auto-create a default Present log for today
         const now = new Date();
         const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+        const autoStatus = calculateMinutesLate(timeStr) > 0 ? 'Late' : 'Present';
         const dbLog = {
           id: `rec-${Date.now()}`,
           employee_id: newEmpIdStr,
@@ -697,7 +813,7 @@ export default function App() {
           clock_in: timeStr,
           clock_out: '--:--',
           total_hours: '0h 00m',
-          status: 'Present'
+          status: autoStatus
         };
         
         const { error: logErr } = await supabase.from('attendance_logs').insert(dbLog);
@@ -749,9 +865,9 @@ export default function App() {
     const now = new Date();
     const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-    let clockIn = timeStr;
-    let clockOut = '--:--';
-    let totalHours = '0h 00m';
+    let clockIn = (existingLog && existingLog.clockIn && existingLog.clockIn !== '--:--') ? existingLog.clockIn : timeStr;
+    let clockOut = (existingLog && existingLog.clockOut) ? existingLog.clockOut : '--:--';
+    let totalHours = (existingLog && existingLog.totalHours) ? existingLog.totalHours : '0h 00m';
 
     if (status === 'Absent') {
       clockIn = '--:--';
@@ -759,12 +875,18 @@ export default function App() {
       totalHours = '0h 00m';
     }
 
+    let finalStatus = status;
+    if (finalStatus !== 'Absent') {
+      const minsLate = calculateMinutesLate(clockIn);
+      finalStatus = minsLate > 0 ? 'Late' : 'Present';
+    }
+
     try {
       if (existingLog) {
         const { error } = await supabase
           .from('attendance_logs')
           .update({
-            status,
+            status: finalStatus,
             clock_in: clockIn,
             clock_out: clockOut,
             total_hours: totalHours
@@ -781,7 +903,7 @@ export default function App() {
             clock_in: clockIn,
             clock_out: clockOut,
             total_hours: totalHours,
-            status
+            status: finalStatus
           });
         if (error) throw error;
       }
@@ -840,6 +962,40 @@ export default function App() {
         console.error(err);
         showToast('Failed to delete attendance log.');
       }
+    }
+  };
+
+  // Save changes to edited attendance log
+  const handleSaveAttendanceEdit = async (logId: string) => {
+    const inTimeStr = editStatus === 'Absent' ? '--:--' : time24To12(editClockIn);
+    const outTimeStr = editStatus === 'Absent' ? '--:--' : time24To12(editClockOut);
+    const totalHours = calculateDuration(inTimeStr, outTimeStr);
+
+    let finalStatus = editStatus;
+    if (finalStatus !== 'Absent' && inTimeStr !== '--:--') {
+      const minsLate = calculateMinutesLate(inTimeStr);
+      finalStatus = minsLate > 0 ? 'Late' : 'Present';
+    }
+
+    try {
+      const { error } = await supabase
+        .from('attendance_logs')
+        .update({
+          clock_in: inTimeStr,
+          clock_out: outTimeStr,
+          total_hours: totalHours,
+          status: finalStatus
+        })
+        .eq('id', logId);
+
+      if (error) throw error;
+
+      showToast('Attendance log updated successfully.');
+      setEditingLogId(null);
+      await fetchData();
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to update attendance log.');
     }
   };
 
@@ -1345,9 +1501,16 @@ export default function App() {
                                     </span>
                                   )}
                                   {status === 'Late' && (
-                                    <span className="px-4 py-1.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 text-xs font-semibold inline-flex items-center gap-1 select-none">
-                                      <Clock className="w-3.5 h-3.5 text-amber-600" /> Late
-                                    </span>
+                                    <div className="flex flex-col items-center gap-1 select-none">
+                                      <span className="px-4 py-1.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 text-xs font-semibold inline-flex items-center gap-1">
+                                        <Clock className="w-3.5 h-3.5 text-amber-600" /> Late
+                                      </span>
+                                      {log?.clockIn && calculateMinutesLate(log.clockIn) > 0 && (
+                                        <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/50 whitespace-nowrap">
+                                          Late by {calculateMinutesLate(log.clockIn)} mins
+                                        </span>
+                                      )}
+                                    </div>
                                   )}
                                 </td>
                                 <td className="px-6 py-4 text-center">
@@ -1642,13 +1805,20 @@ export default function App() {
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
-                                status === 'Present' ? 'bg-emerald-100 text-emerald-800' :
-                                status === 'Late' ? 'bg-amber-100 text-amber-800' :
-                                'bg-error-container/40 text-error'
-                              }`}>
-                                {status}
-                              </span>
+                              <div className="flex flex-col items-end gap-1">
+                                <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
+                                  status === 'Present' ? 'bg-emerald-100 text-emerald-800' :
+                                  status === 'Late' ? 'bg-amber-100 text-amber-800' :
+                                  'bg-error-container/40 text-error'
+                                }`}>
+                                  {status}
+                                </span>
+                                {status === 'Late' && log?.clockIn && calculateMinutesLate(log.clockIn) > 0 && (
+                                  <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/50 whitespace-nowrap">
+                                    Late by {calculateMinutesLate(log.clockIn)} mins
+                                  </span>
+                                )}
+                              </div>
                               {log && (
                                 <button
                                   title="Delete Attendance Log"
@@ -2044,93 +2214,214 @@ export default function App() {
                     {/* Attendance Trends chart */}
                     <div className="bg-surface-container-lowest custom-shadow rounded-xl p-6 lg:col-span-2">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                        <h3 className="font-bold text-lg text-on-surface capitalize">{trendFilter} Attendance Trend</h3>
+                        <h3 className="font-bold text-lg text-on-surface capitalize">{trendFilter} {chartMetric === 'status' ? 'Attendance' : 'Working Hours'} Trend</h3>
                         
-                        <div className="flex gap-1 bg-surface-container-low p-1 rounded-lg text-xs">
-                          <button 
-                            onClick={() => setTrendFilter('weekly')}
-                            className={`px-3 py-1.5 rounded-md font-semibold transition-all cursor-pointer ${trendFilter === 'weekly' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/50'}`}
-                          >
-                            Weekly
-                          </button>
-                          <button 
-                            onClick={() => setTrendFilter('monthly')}
-                            className={`px-3 py-1.5 rounded-md font-semibold transition-all cursor-pointer ${trendFilter === 'monthly' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/50'}`}
-                          >
-                            Monthly
-                          </button>
-                          <button 
-                            onClick={() => setTrendFilter('yearly')}
-                            className={`px-3 py-1.5 rounded-md font-semibold transition-all cursor-pointer ${trendFilter === 'yearly' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/50'}`}
-                          >
-                            Yearly
-                          </button>
+                        <div className="flex flex-wrap gap-2">
+                          {/* Metric Toggle */}
+                          <div className="flex gap-1 bg-surface-container-low p-1 rounded-lg text-[11px]">
+                            <button 
+                              onClick={() => {
+                                setChartMetric('status');
+                                showToast('Showing attendance status');
+                              }}
+                              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${chartMetric === 'status' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/30'}`}
+                            >
+                              Status
+                            </button>
+                            <button 
+                              onClick={() => {
+                                setChartMetric('hours');
+                                showToast('Showing working hours vs 8h average');
+                              }}
+                              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${chartMetric === 'hours' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/30'}`}
+                            >
+                              Working Hours
+                            </button>
+                          </div>
+
+                          {/* Trend Filter Toggle */}
+                          <div className="flex gap-1 bg-surface-container-low p-1 rounded-lg text-[11px]">
+                            <button 
+                              onClick={() => setTrendFilter('weekly')}
+                              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${trendFilter === 'weekly' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/30'}`}
+                            >
+                              Weekly
+                            </button>
+                            <button 
+                              onClick={() => setTrendFilter('monthly')}
+                              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${trendFilter === 'monthly' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/30'}`}
+                            >
+                              Monthly
+                            </button>
+                            <button 
+                              onClick={() => setTrendFilter('yearly')}
+                              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${trendFilter === 'yearly' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/30'}`}
+                            >
+                              Yearly
+                            </button>
+                          </div>
                         </div>
                       </div>
                       
                       {/* Simulating custom vector bars based on trendFilter */}
-                      <div className="h-64 relative flex items-end justify-between gap-4 px-4 pt-8 border-b border-outline-variant/30 pb-2">
-                        {chartData.map((item, index) => {
-                          const hasData = item.total > 0;
-                          
-                          return (
-                            <div key={index} className="flex-1 flex flex-col justify-end h-full relative group">
-                              {/* Stacked Bar container */}
-                              {hasData ? (
-                                <div className={`w-full flex flex-col justify-end rounded-t-md overflow-hidden transition-all duration-300 ${item.isToday || item.isCurrent ? 'ring-2 ring-primary ring-offset-2' : ''}`} style={{ height: '100%' }}>
-                                  {/* Present Segment */}
-                                  {item.presentPercent > 0 && (
-                                    <div 
-                                      className="bg-emerald-500 hover:brightness-105 transition-all" 
-                                      style={{ height: `${item.presentPercent}%` }}
-                                      title={`Present: ${item.presentPercent.toFixed(0)}%`}
-                                    />
-                                  )}
-                                  {/* Late Segment */}
-                                  {item.latePercent > 0 && (
-                                    <div 
-                                      className="bg-amber-500 hover:brightness-105 transition-all" 
-                                      style={{ height: `${item.latePercent}%` }}
-                                      title={`Late: ${item.latePercent.toFixed(0)}%`}
-                                    />
-                                  )}
-                                  {/* Absent Segment */}
-                                  {item.absentPercent > 0 && (
-                                    <div 
-                                      className="bg-red-500 hover:brightness-105 transition-all" 
-                                      style={{ height: `${item.absentPercent}%` }}
-                                      title={`Absent: ${item.absentPercent.toFixed(0)}%`}
-                                    />
-                                  )}
-                                </div>
-                              ) : (
-                                /* No Data placeholder (e.g. future date or weekend) */
-                                <div className="w-full h-1 bg-outline-variant/20 rounded-full" />
-                              )}
-
-                              {/* Tooltip on hover */}
-                              {hasData && (
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-900/95 backdrop-blur-md text-white text-[10px] p-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10 whitespace-nowrap border border-white/10">
-                                  <p className="font-bold text-center border-b border-white/10 pb-1 mb-1">{item.label} Attendance</p>
-                                  <p className="flex items-center gap-1.5"><span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Present: {item.present} ({item.presentPercent.toFixed(0)}%)</p>
-                                  <p className="flex items-center gap-1.5"><span className="w-2 h-2 bg-amber-500 rounded-full"></span> Late: {item.late} ({item.latePercent.toFixed(0)}%)</p>
-                                  <p className="flex items-center gap-1.5"><span className="w-2 h-2 bg-red-500 rounded-full"></span> Absent: {item.absent} ({item.absentPercent.toFixed(0)}%)</p>
-                                </div>
-                              )}
-                              
-                              {/* Weekend label indicator */}
-                              {item.isWeekend && (
-                                <span className="absolute inset-0 flex items-center justify-center text-[9px] font-semibold text-on-surface-variant/40 select-none pointer-events-none rotate-90 sm:rotate-0">
-                                  Weekend
-                                </span>
-                              )}
+                      <div className="h-64 pt-8 pb-2 pl-12 pr-4 border-b border-outline-variant/30">
+                        <div className="relative h-full w-full flex items-end justify-between gap-4">
+                          {/* 8-Hour Average Dashed Target Line */}
+                          {chartMetric === 'hours' && (
+                            <div 
+                              className="absolute left-0 right-0 border-t-2 border-dashed border-red-500/40 z-20 pointer-events-none transition-all duration-300"
+                              style={{ bottom: `${(8 / maxHoursScale) * 100}%` }}
+                            >
+                              <span className="absolute right-full mr-2 -top-2 bg-red-50 text-red-600 px-1.5 py-0.5 rounded text-[10px] font-extrabold border border-red-200/60 whitespace-nowrap shadow-sm">
+                                8hr
+                              </span>
                             </div>
-                          );
-                        })}
+                          )}
+
+                          {chartData.map((item, index) => {
+                            const hasData = item.total > 0;
+                            
+                            // Metric-specific variables
+                            const w = item.avgWorkingHours || 0;
+                            const exceeds = w >= 8;
+                            const workedPct = (Math.min(w, 8) / maxHoursScale) * 100;
+                            const excessPct = exceeds ? ((w - 8) / maxHoursScale) * 100 : 0;
+                            const deficitPct = !exceeds ? ((8 - w) / maxHoursScale) * 100 : 0;
+
+                            return (
+                              <div key={index} className="flex-1 flex flex-col justify-end h-full relative group">
+                                {/* Stacked Bar container */}
+                                {hasData ? (
+                                  <div className={`w-full flex flex-col justify-end rounded-t-md overflow-hidden transition-all duration-300 ${item.isToday || item.isCurrent ? 'ring-2 ring-primary ring-offset-2' : ''}`} style={{ height: '100%' }}>
+                                    {chartMetric === 'status' ? (
+                                      <>
+                                        {/* Present Segment */}
+                                        {item.presentPercent > 0 && (
+                                          <div 
+                                            className="bg-emerald-500 hover:brightness-105 transition-all" 
+                                            style={{ height: `${item.presentPercent}%` }}
+                                            title={`Present: ${item.presentPercent.toFixed(0)}%`}
+                                          />
+                                        )}
+                                        {/* Late Segment */}
+                                        {item.latePercent > 0 && (
+                                          <div 
+                                            className="bg-amber-500 hover:brightness-105 transition-all" 
+                                            style={{ height: `${item.latePercent}%` }}
+                                            title={`Late: ${item.latePercent.toFixed(0)}%`}
+                                          />
+                                        )}
+                                        {/* Absent Segment */}
+                                        {item.absentPercent > 0 && (
+                                          <div 
+                                            className="bg-red-500 hover:brightness-105 transition-all" 
+                                            style={{ height: `${item.absentPercent}%` }}
+                                            title={`Absent: ${item.absentPercent.toFixed(0)}%`}
+                                          />
+                                        )}
+                                      </>
+                                    ) : (
+                                      <>
+                                        {exceeds ? (
+                                          <>
+                                            {/* Blue Overtime Segment */}
+                                            {excessPct > 0 && (
+                                              <div 
+                                                className="bg-blue-500 hover:brightness-105 transition-all" 
+                                                style={{ height: `${excessPct}%` }}
+                                              />
+                                            )}
+                                            {/* Standard Worked Base Segment */}
+                                            {workedPct > 0 && (
+                                              <div 
+                                                className="bg-slate-300 hover:brightness-105 transition-all" 
+                                                style={{ height: `${workedPct}%` }}
+                                              />
+                                            )}
+                                          </>
+                                        ) : (
+                                          <>
+                                            {/* Yellow Deficit Segment */}
+                                            {deficitPct > 0 && (
+                                              <div 
+                                                className="bg-yellow-400 hover:brightness-105 transition-all" 
+                                                style={{ height: `${deficitPct}%` }}
+                                              />
+                                            )}
+                                            {/* Worked Base Segment */}
+                                            {workedPct > 0 && (
+                                              <div 
+                                                className="bg-slate-300 hover:brightness-105 transition-all" 
+                                                style={{ height: `${workedPct}%` }}
+                                              />
+                                            )}
+                                          </>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                ) : (
+                                  /* No Data placeholder (e.g. future date or weekend) */
+                                  <div className="w-full h-1 bg-outline-variant/20 rounded-full" />
+                                )}
+
+                                {/* Tooltip on hover */}
+                                {hasData && (
+                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-900/95 backdrop-blur-md text-white text-[10px] p-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10 whitespace-nowrap border border-white/10">
+                                    {chartMetric === 'status' ? (
+                                      <>
+                                        <p className="font-bold text-center border-b border-white/10 pb-1 mb-1">{item.label} Attendance</p>
+                                        <p className="flex items-center gap-1.5"><span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Present: {item.present} ({item.presentPercent.toFixed(0)}%)</p>
+                                        <p className="flex items-center gap-1.5"><span className="w-2 h-2 bg-amber-500 rounded-full"></span> Late: {item.late} ({item.latePercent.toFixed(0)}%)</p>
+                                        <p className="flex items-center gap-1.5"><span className="w-2 h-2 bg-red-500 rounded-full"></span> Absent: {item.absent} ({item.absentPercent.toFixed(0)}%)</p>
+                                        {item.minsLate > 0 && (
+                                          <p className="text-amber-400 font-bold border-t border-white/10 pt-1 mt-1 flex items-center gap-1">
+                                            ⚠️ {trendFilter === 'Weekly' ? `Late by ${item.minsLate} mins` : `Late total: ${item.minsLate} mins`}
+                                          </p>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <>
+                                        <p className="font-bold text-center border-b border-white/10 pb-1 mb-1">{item.label} Working Hours</p>
+                                        <p className="flex items-center gap-1.5">
+                                          <span className="w-2 h-2 bg-slate-300 rounded-full"></span> 
+                                          Worked: {w.toFixed(2)}h
+                                        </p>
+                                        {w >= 8 ? (
+                                          <p className="flex items-center gap-1.5 text-blue-400 font-semibold">
+                                            <span className="w-2 h-2 bg-blue-500 rounded-full"></span> 
+                                            Exceeds Average: +{(w - 8).toFixed(2)}h
+                                          </p>
+                                        ) : (
+                                          <p className="flex items-center gap-1.5 text-yellow-400 font-semibold">
+                                            <span className="w-2 h-2 bg-yellow-400 rounded-full"></span> 
+                                            Deficit Hours: -{(8 - w).toFixed(2)}h
+                                          </p>
+                                        )}
+                                        {item.minsLate > 0 && (
+                                          <p className="text-amber-400 font-bold border-t border-white/10 pt-1 mt-1 flex items-center gap-1">
+                                            ⚠️ {trendFilter === 'Weekly' ? `Late by ${item.minsLate} mins` : `Late total: ${item.minsLate} mins`}
+                                          </p>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+                                
+                                {/* Weekend label indicator */}
+                                {item.isWeekend && (
+                                  <span className="absolute inset-0 flex items-center justify-center text-[9px] font-semibold text-on-surface-variant/40 select-none pointer-events-none rotate-90 sm:rotate-0">
+                                    Weekend
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
 
                       {/* X-Axis labels */}
-                      <div className="flex justify-between px-4 mt-4 text-xs font-semibold text-on-surface-variant">
+                      <div className="flex justify-between pl-12 pr-4 mt-4 text-xs font-semibold text-on-surface-variant">
                         {chartData.map((item, index) => (
                           <span 
                             key={index} 
@@ -2143,15 +2434,31 @@ export default function App() {
 
                       {/* Legend */}
                       <div className="flex justify-center gap-6 mt-6 pt-4 border-t border-outline-variant/30 text-xs font-semibold">
-                        <span className="flex items-center gap-2 text-on-surface-variant">
-                          <span className="w-3 h-3 bg-emerald-500 rounded-full"></span> Present
-                        </span>
-                        <span className="flex items-center gap-2 text-on-surface-variant">
-                          <span className="w-3 h-3 bg-amber-500 rounded-full"></span> Late
-                        </span>
-                        <span className="flex items-center gap-2 text-on-surface-variant">
-                          <span className="w-3 h-3 bg-red-500 rounded-full"></span> Absent
-                        </span>
+                        {chartMetric === 'status' ? (
+                          <>
+                            <span className="flex items-center gap-2 text-on-surface-variant">
+                              <span className="w-3 h-3 bg-emerald-500 rounded-full"></span> Present
+                            </span>
+                            <span className="flex items-center gap-2 text-on-surface-variant">
+                              <span className="w-3 h-3 bg-amber-500 rounded-full"></span> Late
+                            </span>
+                            <span className="flex items-center gap-2 text-on-surface-variant">
+                              <span className="w-3 h-3 bg-red-500 rounded-full"></span> Absent
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="flex items-center gap-2 text-on-surface-variant">
+                              <span className="w-3 h-3 bg-slate-300 rounded-full"></span> Standard Base (8h)
+                            </span>
+                            <span className="flex items-center gap-2 text-on-surface-variant">
+                              <span className="w-3 h-3 bg-blue-500 rounded-full"></span> Overtime Exceeded (Blue)
+                            </span>
+                            <span className="flex items-center gap-2 text-on-surface-variant">
+                              <span className="w-3 h-3 bg-yellow-400 rounded-full"></span> Deficit Below Average (Yellow)
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </section>
@@ -2177,43 +2484,137 @@ export default function App() {
                         <tbody className="divide-y divide-outline-variant/30">
                           {attendanceLogs
                             .filter(log => log.employeeId === selectedEmployeeForProfile.id)
-                            .map((log) => (
-                              <tr key={log.id} className="hover:bg-primary/5 transition-colors">
-                                <td className="px-6 py-4 font-semibold text-sm">{log.date}</td>
-                                <td className="px-6 py-4 text-sm text-on-surface-variant">{log.clockIn}</td>
-                                <td className="px-6 py-4 text-sm text-on-surface-variant">
-                                  {selectedEmployeeForProfile && log.date === todayDateString && (log.status === 'Present' || log.status === 'Late') && (log.clockOut === '--:--' || !log.clockOut) ? (
-                                    <button
-                                      onClick={() => handleClockOut(selectedEmployeeForProfile.id)}
-                                      className="px-2 py-0.5 bg-primary text-on-primary font-bold text-[10px] rounded hover:brightness-110 active:scale-95 transition-all cursor-pointer shadow-sm"
-                                    >
-                                      Clock Out
-                                    </button>
-                                  ) : (
-                                    log.clockOut
-                                  )}
-                                </td>
-                                <td className="px-6 py-4 font-semibold text-sm text-primary">{log.totalHours}</td>
-                                <td className="px-6 py-4">
-                                  <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
-                                    log.status === 'Present' ? 'bg-emerald-100 text-emerald-800' :
-                                    log.status === 'Late' ? 'bg-amber-100 text-amber-800' :
-                                    'bg-error-container/40 text-error'
-                                  }`}>
-                                    {log.status}
-                                  </span>
-                                </td>
-                                <td className="px-6 py-4 text-center">
-                                  <button
-                                    title="Delete Attendance Log"
-                                    onClick={() => handleDeleteAttendance(log.id)}
-                                    className="p-1.5 rounded-full border border-outline-variant text-error hover:bg-error-container/20 hover:border-error transition-all"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
+                            .map((log) => {
+                              const isEditing = editingLogId === log.id;
+                              return (
+                                <tr key={log.id} className="hover:bg-primary/5 transition-colors">
+                                  <td className="px-6 py-4 font-semibold text-sm">{log.date}</td>
+                                  <td className="px-6 py-4 text-sm text-on-surface-variant">
+                                    {isEditing ? (
+                                      <input
+                                        type="time"
+                                        disabled={editStatus === 'Absent'}
+                                        value={editClockIn}
+                                        onChange={(e) => setEditClockIn(e.target.value)}
+                                        className="bg-surface-container-low border border-outline-variant rounded p-1 text-sm outline-none focus:ring-1 focus:ring-primary w-28"
+                                      />
+                                    ) : (
+                                      log.clockIn
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-4 text-sm text-on-surface-variant">
+                                    {isEditing ? (
+                                      <input
+                                        type="time"
+                                        disabled={editStatus === 'Absent'}
+                                        value={editClockOut}
+                                        onChange={(e) => setEditClockOut(e.target.value)}
+                                        className="bg-surface-container-low border border-outline-variant rounded p-1 text-sm outline-none focus:ring-1 focus:ring-primary w-28"
+                                      />
+                                    ) : selectedEmployeeForProfile && log.date === todayDateString && (log.status === 'Present' || log.status === 'Late') && (log.clockOut === '--:--' || !log.clockOut) ? (
+                                      <button
+                                        onClick={() => handleClockOut(selectedEmployeeForProfile.id)}
+                                        className="px-2 py-0.5 bg-primary text-on-primary font-bold text-[10px] rounded hover:brightness-110 active:scale-95 transition-all cursor-pointer shadow-sm"
+                                      >
+                                        Clock Out
+                                      </button>
+                                    ) : (
+                                      log.clockOut
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-4 font-semibold text-sm text-primary">
+                                    {isEditing ? (
+                                      calculateDuration(
+                                        editStatus === 'Absent' ? '--:--' : time24To12(editClockIn),
+                                        editStatus === 'Absent' ? '--:--' : time24To12(editClockOut)
+                                      )
+                                    ) : (
+                                      log.totalHours
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    {isEditing ? (
+                                      <select
+                                        value={editStatus}
+                                        onChange={(e) => {
+                                          const newStatus = e.target.value as 'Present' | 'Absent' | 'Late';
+                                          setEditStatus(newStatus);
+                                          if (newStatus === 'Absent') {
+                                            setEditClockIn('');
+                                            setEditClockOut('');
+                                          } else {
+                                            if (!editClockIn) setEditClockIn('09:00');
+                                            if (!editClockOut) setEditClockOut('17:00');
+                                          }
+                                        }}
+                                        className="bg-surface-container-low border border-outline-variant rounded p-1.5 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary"
+                                      >
+                                        <option value="Present">Present</option>
+                                        <option value="Late">Late</option>
+                                        <option value="Absent">Absent</option>
+                                      </select>
+                                    ) : (
+                                       <div className="flex flex-col items-start gap-1">
+                                         <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                                           log.status === 'Present' ? 'bg-emerald-100 text-emerald-800' :
+                                           log.status === 'Late' ? 'bg-amber-100 text-amber-800' :
+                                           'bg-error-container/40 text-error'
+                                         }`}>
+                                           {log.status}
+                                         </span>
+                                         {log.status === 'Late' && log.clockIn && calculateMinutesLate(log.clockIn) > 0 && (
+                                           <span className="text-[10px] text-amber-600 font-semibold whitespace-nowrap">
+                                             Late by {calculateMinutesLate(log.clockIn)} mins
+                                           </span>
+                                         )}
+                                       </div>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-4 text-center">
+                                    {isEditing ? (
+                                      <div className="flex justify-center items-center gap-1.5">
+                                        <button
+                                          title="Save Changes"
+                                          onClick={() => handleSaveAttendanceEdit(log.id)}
+                                          className="p-1.5 rounded-full border border-emerald-600 bg-emerald-600 text-white hover:brightness-110 active:scale-95 transition-all shadow-sm cursor-pointer"
+                                        >
+                                          <Check className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          title="Cancel"
+                                          onClick={() => setEditingLogId(null)}
+                                          className="p-1.5 rounded-full border border-outline-variant text-on-surface-variant hover:bg-surface-container active:scale-95 transition-all cursor-pointer"
+                                        >
+                                          <X className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="flex justify-center items-center gap-1.5">
+                                        <button
+                                          title="Edit Attendance Log"
+                                          onClick={() => {
+                                            setEditingLogId(log.id);
+                                            setEditClockIn(time12To24(log.clockIn));
+                                            setEditClockOut(time12To24(log.clockOut));
+                                            setEditStatus(log.status as 'Present' | 'Absent' | 'Late');
+                                          }}
+                                          className="p-1.5 rounded-full border border-outline-variant text-primary hover:bg-primary/10 hover:border-primary active:scale-95 transition-all cursor-pointer"
+                                        >
+                                          <Edit2 className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          title="Delete Attendance Log"
+                                          onClick={() => handleDeleteAttendance(log.id)}
+                                          className="p-1.5 rounded-full border border-outline-variant text-error hover:bg-error-container/20 hover:border-error transition-all"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
                         </tbody>
                       </table>
                     </div>

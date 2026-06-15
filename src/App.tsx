@@ -158,9 +158,9 @@ export default function App() {
   }, []);
 
   // Authentication State
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(true); // Logged in by default so the user sees the dashboard, but can logout
-  const [username, setUsername] = useState<string>('admin');
-  const [password, setPassword] = useState<string>('Zeexai@admin');
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false); // Ask login credential first
+  const [username, setUsername] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string>('');
   const [rememberMe, setRememberMe] = useState<boolean>(true);
@@ -647,6 +647,25 @@ export default function App() {
   const [newEmpId, setNewEmpId] = useState<string>('');
   const [newEmpAvatar, setNewEmpAvatar] = useState<string>('');
 
+  // Export Modal State
+  const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
+  const [isProfileExportModalOpen, setIsProfileExportModalOpen] = useState<boolean>(false);
+  const [exportStartDate, setExportStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  });
+  const [exportEndDate, setExportEndDate] = useState<string>(() => {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  });
+
   // Toast Feedback State
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -729,12 +748,12 @@ export default function App() {
 
   const handleLogin = (e: FormEvent) => {
     e.preventDefault();
-    if (username.trim() === 'admin' && password === 'Zeexai@admin') {
+    if (username.trim() === 'Z-Hajirii' && password === 'Admin@Hajirii') {
       setIsLoggedIn(true);
       setLoginError('');
       showToast('Successfully authenticated as admin.');
     } else {
-      setLoginError('Invalid username or password. Please use admin / Zeexai@admin');
+      setLoginError('Invalid username or password. Please use Z-Hajirii / Admin@Hajirii');
     }
   };
 
@@ -963,6 +982,691 @@ export default function App() {
         showToast('Failed to delete attendance log.');
       }
     }
+  };
+
+  // Export attendance data as CSV daywise report for all users in date range
+  const handleExportCSV = (startDateStr: string, endDateStr: string) => {
+    const [startYear, startMonth, startDay] = startDateStr.split('-').map(Number);
+    const startDate = new Date(startYear, startMonth - 1, startDay);
+
+    const [endYear, endMonth, endDay] = endDateStr.split('-').map(Number);
+    const endDate = new Date(endYear, endMonth - 1, endDay);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      showToast('Please select valid start and end dates.');
+      return;
+    }
+    if (startDate > endDate) {
+      showToast('Start date cannot be after end date.');
+      return;
+    }
+
+    const getDatesInRange = (start: Date, end: Date): Date[] => {
+      const dates: Date[] = [];
+      const curr = new Date(start);
+      curr.setHours(0,0,0,0);
+      const endLimit = new Date(end);
+      endLimit.setHours(0,0,0,0);
+      while (curr <= endLimit) {
+        dates.push(new Date(curr));
+        curr.setDate(curr.getDate() + 1);
+      }
+      return dates;
+    };
+
+    const dates = getDatesInRange(startDate, endDate);
+    let csvContent = 'Date,Employee ID,Employee Name,Role,Status,Clock In,Clock Out,Total Working Hours\n';
+
+    dates.forEach(dateObj => {
+      const dateStr = formatDateString(dateObj);
+      const isSunday = dateObj.getDay() === 0;
+
+      employees.forEach(emp => {
+        const log = attendanceLogs.find(l => l.employeeId === emp.id && l.date === dateStr);
+        let status = 'Absent';
+        let clockIn = '--:--';
+        let clockOut = '--:--';
+        let totalHours = '0h 00m';
+
+        if (log) {
+          status = log.status;
+          clockIn = log.clockIn || '--:--';
+          clockOut = log.clockOut || '--:--';
+          totalHours = log.totalHours || '0h 00m';
+        } else if (isSunday) {
+          status = 'Weekend';
+        }
+
+        // Escape fields to prevent CSV injection or breaking on commas
+        const escapedName = `"${emp.name.replace(/"/g, '""')}"`;
+        const escapedRole = `"${emp.role.replace(/"/g, '""')}"`;
+
+        csvContent += `${dateStr},${emp.empId},${escapedName},${escapedRole},${status},${clockIn},${clockOut},${totalHours}\n`;
+      });
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Attendance_Report_${startDateStr}_to_${endDateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('Report exported successfully!');
+    setIsExportModalOpen(false);
+  };
+
+  // Export attendance data as CSV daywise report for a specific user in date range
+  const handleExportProfileCSV = (employee: Employee, startDateStr: string, endDateStr: string) => {
+    const [startYear, startMonth, startDay] = startDateStr.split('-').map(Number);
+    const startDate = new Date(startYear, startMonth - 1, startDay);
+
+    const [endYear, endMonth, endDay] = endDateStr.split('-').map(Number);
+    const endDate = new Date(endYear, endMonth - 1, endDay);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      showToast('Please select valid start and end dates.');
+      return;
+    }
+    if (startDate > endDate) {
+      showToast('Start date cannot be after end date.');
+      return;
+    }
+
+    const getDatesInRange = (start: Date, end: Date): Date[] => {
+      const dates: Date[] = [];
+      const curr = new Date(start);
+      curr.setHours(0,0,0,0);
+      const endLimit = new Date(end);
+      endLimit.setHours(0,0,0,0);
+      while (curr <= endLimit) {
+        dates.push(new Date(curr));
+        curr.setDate(curr.getDate() + 1);
+      }
+      return dates;
+    };
+
+    const dates = getDatesInRange(startDate, endDate);
+    let csvContent = `Employee Profile Report\n`;
+    csvContent += `Employee Name,${employee.name}\n`;
+    csvContent += `Employee ID,${employee.empId}\n`;
+    csvContent += `Role,${employee.role}\n`;
+    csvContent += `Email,${employee.email}\n\n`;
+    csvContent += 'Date,Status,Clock In,Clock Out,Total Working Hours,Minutes Late\n';
+
+    dates.forEach(dateObj => {
+      const dateStr = formatDateString(dateObj);
+      const isSunday = dateObj.getDay() === 0;
+      const log = attendanceLogs.find(l => l.employeeId === employee.id && l.date === dateStr);
+
+      let status = 'Absent';
+      let clockIn = '--:--';
+      let clockOut = '--:--';
+      let totalHours = '0h 00m';
+      let minsLate = 0;
+
+      if (log) {
+        status = log.status;
+        clockIn = log.clockIn || '--:--';
+        clockOut = log.clockOut || '--:--';
+        totalHours = log.totalHours || '0h 00m';
+        if (log.clockIn) {
+          minsLate = calculateMinutesLate(log.clockIn);
+        }
+      } else if (isSunday) {
+        status = 'Weekend';
+      }
+
+      csvContent += `${dateStr},${status},${clockIn},${clockOut},${totalHours},${minsLate}\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${employee.name.replace(/\s+/g, '_')}_Attendance_${startDateStr}_to_${endDateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast(`Exported report for ${employee.name} successfully!`);
+    setIsProfileExportModalOpen(false);
+  };
+
+  // Export attendance data as PDF report for a specific employee in date range
+  const handleExportProfilePDF = (employee: Employee, startDateStr: string, endDateStr: string) => {
+    const [startYear, startMonth, startDay] = startDateStr.split('-').map(Number);
+    const startDate = new Date(startYear, startMonth - 1, startDay);
+
+    const [endYear, endMonth, endDay] = endDateStr.split('-').map(Number);
+    const endDate = new Date(endYear, endMonth - 1, endDay);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      showToast('Please select valid start and end dates.');
+      return;
+    }
+    if (startDate > endDate) {
+      showToast('Start date cannot be after end date.');
+      return;
+    }
+
+    const getDatesInRange = (start: Date, end: Date): Date[] => {
+      const dates: Date[] = [];
+      const curr = new Date(start);
+      curr.setHours(0,0,0,0);
+      const endLimit = new Date(end);
+      endLimit.setHours(0,0,0,0);
+      while (curr <= endLimit) {
+        dates.push(new Date(curr));
+        curr.setDate(curr.getDate() + 1);
+      }
+      return dates;
+    };
+
+    const dates = getDatesInRange(startDate, endDate);
+
+    let totalDays = 0;
+    let presentCount = 0;
+    let lateCount = 0;
+    let absentCount = 0;
+    let weekendCount = 0;
+
+    const tableRows = dates.map(dateObj => {
+      const dateStr = formatDateString(dateObj);
+      const isSunday = dateObj.getDay() === 0;
+      const log = attendanceLogs.find(l => l.employeeId === employee.id && l.date === dateStr);
+
+      let status = 'Absent';
+      let clockIn = '--:--';
+      let clockOut = '--:--';
+      let totalHours = '0h 00m';
+      let minsLate = 0;
+
+      if (log) {
+        status = log.status;
+        clockIn = log.clockIn || '--:--';
+        clockOut = log.clockOut || '--:--';
+        totalHours = log.totalHours || '0h 00m';
+        if (log.clockIn) {
+          minsLate = calculateMinutesLate(log.clockIn);
+        }
+      } else if (isSunday) {
+        status = 'Weekend';
+      }
+
+      totalDays++;
+      if (status === 'Present') presentCount++;
+      else if (status === 'Late') lateCount++;
+      else if (status === 'Absent') absentCount++;
+      else if (status === 'Weekend') weekendCount++;
+
+      return `
+        <tr>
+          <td>${dateStr}</td>
+          <td><span class="badge badge-${status.toLowerCase()}">${status}</span></td>
+          <td>${clockIn}</td>
+          <td>${clockOut}</td>
+          <td>${totalHours}</td>
+          <td>${minsLate > 0 ? minsLate + ' mins' : '--'}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const attendanceRate = (totalDays - weekendCount) > 0 
+      ? (((presentCount + lateCount) / (totalDays - weekendCount)) * 100).toFixed(1) + '%' 
+      : '100.0%';
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      showToast('Popup blocked! Please allow popups to export PDF.');
+      return;
+    }
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Attendance Report - ${employee.name}</title>
+        <style>
+          body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            color: #1e293b;
+            margin: 0;
+            padding: 40px;
+            background-color: #ffffff;
+          }
+          .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+          }
+          .title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #0f4c81;
+          }
+          .date-range {
+            font-size: 14px;
+            color: #64748b;
+          }
+          .meta-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+          }
+          .meta-card {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 15px;
+          }
+          .meta-title {
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+            color: #64748b;
+            margin-bottom: 8px;
+          }
+          .meta-value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #0f4c81;
+          }
+          .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 40px;
+          }
+          .stat-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+          }
+          .stat-num {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+          }
+          .stat-num.present { color: #10b981; }
+          .stat-num.late { color: #f59e0b; }
+          .stat-num.absent { color: #ef4444; }
+          .stat-num.rate { color: #0f4c81; }
+          .stat-label {
+            font-size: 11px;
+            font-weight: bold;
+            color: #64748b;
+            text-transform: uppercase;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+          }
+          th {
+            background-color: #f1f5f9;
+            color: #475569;
+            font-size: 12px;
+            text-transform: uppercase;
+            font-weight: bold;
+            text-align: left;
+            padding: 12px;
+            border-bottom: 2px solid #cbd5e1;
+          }
+          td {
+            padding: 12px;
+            font-size: 13px;
+            border-bottom: 1px solid #e2e8f0;
+          }
+          .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            font-size: 11px;
+            font-weight: bold;
+            border-radius: 4px;
+          }
+          .badge-present { background-color: #d1fae5; color: #065f46; }
+          .badge-late { background-color: #fef3c7; color: #92400e; }
+          .badge-absent { background-color: #fee2e2; color: #991b1b; }
+          .badge-weekend { background-color: #f1f5f9; color: #475569; }
+          @media print {
+            body { padding: 0; }
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <div class="title">Z-HAJIRII ATTENDANCE PROFILE REPORT</div>
+            <div class="date-range">Report Period: ${startDateStr} to ${endDateStr}</div>
+          </div>
+          <div class="no-print">
+            <button onclick="window.print()" style="padding: 10px 20px; background-color: #0f4c81; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">Print / Save as PDF</button>
+          </div>
+        </div>
+
+        <div class="meta-grid">
+          <div class="meta-card">
+            <div class="meta-title">Employee Details</div>
+            <div style="font-size: 15px; font-weight: bold; color: #1e293b;">${employee.name}</div>
+            <div style="font-size: 13px; color: #64748b; margin-top: 4px;">Role: ${employee.role}</div>
+            <div style="font-size: 13px; color: #64748b;">Email: ${employee.email}</div>
+          </div>
+          <div class="meta-card">
+            <div class="meta-title">Corporate Information</div>
+            <div style="font-size: 15px; font-weight: bold; color: #1e293b;">Corporate ID: ${employee.empId}</div>
+            <div style="font-size: 13px; color: #64748b; margin-top: 4px;">Generated On: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</div>
+            <div style="font-size: 13px; color: #64748b;">Status: Active Corporate Member</div>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-num present">${presentCount + lateCount}</div>
+            <div class="stat-label">Total Present</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num late">${lateCount}</div>
+            <div class="stat-label">Late Arrivals</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num absent">${absentCount}</div>
+            <div class="stat-label">Total Absent</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num rate">${attendanceRate}</div>
+            <div class="stat-label">Attendance Rate</div>
+          </div>
+        </div>
+
+        <div style="font-weight: bold; font-size: 16px; color: #0f4c81; margin-bottom: 10px;">Daywise Attendance Records</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Status</th>
+              <th>Clock In</th>
+              <th>Clock Out</th>
+              <th>Total Hours</th>
+              <th>Late Duration</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRows}
+          </tbody>
+        </table>
+
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 500);
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+    showToast(`PDF Report generated for ${employee.name}`);
+    setIsProfileExportModalOpen(false);
+  };
+
+  // Export attendance data as PDF report overall for all users in date range
+  const handleExportOverallPDF = (startDateStr: string, endDateStr: string) => {
+    const [startYear, startMonth, startDay] = startDateStr.split('-').map(Number);
+    const startDate = new Date(startYear, startMonth - 1, startDay);
+
+    const [endYear, endMonth, endDay] = endDateStr.split('-').map(Number);
+    const endDate = new Date(endYear, endMonth - 1, endDay);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      showToast('Please select valid start and end dates.');
+      return;
+    }
+    if (startDate > endDate) {
+      showToast('Start date cannot be after end date.');
+      return;
+    }
+
+    const getDatesInRange = (start: Date, end: Date): Date[] => {
+      const dates: Date[] = [];
+      const curr = new Date(start);
+      curr.setHours(0,0,0,0);
+      const endLimit = new Date(end);
+      endLimit.setHours(0,0,0,0);
+      while (curr <= endLimit) {
+        dates.push(new Date(curr));
+        curr.setDate(curr.getDate() + 1);
+      }
+      return dates;
+    };
+
+    const dates = getDatesInRange(startDate, endDate);
+
+    let totalWorkingDays = 0;
+    let totalPresentSum = 0;
+    let totalLateSum = 0;
+    let totalAbsentSum = 0;
+
+    let tableRows = '';
+
+    dates.forEach(dateObj => {
+      const dateStr = formatDateString(dateObj);
+      const isSunday = dateObj.getDay() === 0;
+      if (!isSunday) totalWorkingDays++;
+
+      employees.forEach(emp => {
+        const log = attendanceLogs.find(l => l.employeeId === emp.id && l.date === dateStr);
+        let status = 'Absent';
+        let clockIn = '--:--';
+        let clockOut = '--:--';
+        let totalHours = '0h 00m';
+
+        if (log) {
+          status = log.status;
+          clockIn = log.clockIn || '--:--';
+          clockOut = log.clockOut || '--:--';
+          totalHours = log.totalHours || '0h 00m';
+        } else if (isSunday) {
+          status = 'Weekend';
+        }
+
+        if (status === 'Present') totalPresentSum++;
+        else if (status === 'Late') totalLateSum++;
+        else if (status === 'Absent') totalAbsentSum++;
+
+        tableRows += `
+          <tr>
+            <td>${dateStr}</td>
+            <td>${emp.empId}</td>
+            <td><strong>${emp.name}</strong></td>
+            <td>${emp.role}</td>
+            <td><span class="badge badge-${status.toLowerCase()}">${status}</span></td>
+            <td>${clockIn}</td>
+            <td>${clockOut}</td>
+            <td>${totalHours}</td>
+          </tr>
+        `;
+      });
+    });
+
+    const averageRate = totalWorkingDays > 0 && employees.length > 0
+      ? (((totalPresentSum + totalLateSum) / (totalWorkingDays * employees.length)) * 100).toFixed(1) + '%'
+      : '100.0%';
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      showToast('Popup blocked! Please allow popups to export PDF.');
+      return;
+    }
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Z-Hajirii Overall Attendance Report</title>
+        <style>
+          body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            color: #1e293b;
+            margin: 0;
+            padding: 40px;
+            background-color: #ffffff;
+          }
+          .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+          }
+          .title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #0f4c81;
+          }
+          .date-range {
+            font-size: 14px;
+            color: #64748b;
+          }
+          .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 40px;
+          }
+          .stat-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            background-color: #f8fafc;
+          }
+          .stat-num {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+          }
+          .stat-num.employees { color: #0f4c81; }
+          .stat-num.present { color: #10b981; }
+          .stat-num.late { color: #f59e0b; }
+          .stat-num.rate { color: #10b981; }
+          .stat-label {
+            font-size: 11px;
+            font-weight: bold;
+            color: #64748b;
+            text-transform: uppercase;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+          }
+          th {
+            background-color: #f1f5f9;
+            color: #475569;
+            font-size: 12px;
+            text-transform: uppercase;
+            font-weight: bold;
+            text-align: left;
+            padding: 12px;
+            border-bottom: 2px solid #cbd5e1;
+          }
+          td {
+            padding: 12px;
+            font-size: 13px;
+            border-bottom: 1px solid #e2e8f0;
+          }
+          .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            font-size: 11px;
+            font-weight: bold;
+            border-radius: 4px;
+          }
+          .badge-present { background-color: #d1fae5; color: #065f46; }
+          .badge-late { background-color: #fef3c7; color: #92400e; }
+          .badge-absent { background-color: #fee2e2; color: #991b1b; }
+          .badge-weekend { background-color: #f1f5f9; color: #475569; }
+          @media print {
+            body { padding: 0; }
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <div class="title">Z-HAJIRII OVERALL ATTENDANCE REPORT</div>
+            <div class="date-range">Report Period: ${startDateStr} to ${endDateStr}</div>
+          </div>
+          <div class="no-print">
+            <button onclick="window.print()" style="padding: 10px 20px; background-color: #0f4c81; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">Print / Save as PDF</button>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-num employees">${employees.length}</div>
+            <div class="stat-label">Total Employees</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num present">${totalPresentSum + totalLateSum}</div>
+            <div class="stat-label">Total Present Records</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num late">${totalLateSum}</div>
+            <div class="stat-label">Total Late Records</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num rate">${averageRate}</div>
+            <div class="stat-label">Average Attendance Rate</div>
+          </div>
+        </div>
+
+        <div style="font-weight: bold; font-size: 16px; color: #0f4c81; margin-bottom: 10px;">Detailed Daywise Log (All Employees)</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Emp ID</th>
+              <th>Employee Name</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Clock In</th>
+              <th>Clock Out</th>
+              <th>Total Hours</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRows}
+          </tbody>
+        </table>
+
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 500);
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+    showToast(`PDF Report generated for overall records`);
+    setIsExportModalOpen(false);
   };
 
   // Save changes to edited attendance log
@@ -1223,12 +1927,12 @@ export default function App() {
 
                 {/* Demo Credentials Helper */}
                 <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant text-[12px] text-on-surface-filter text-center">
-                  <span className="font-bold text-primary">Demo login:</span> <code className="bg-white px-1 py-0.5 rounded shadow-sm">admin</code> / <code className="bg-white px-1 py-0.5 rounded shadow-sm">Zeexai@admin</code>
+                  <span className="font-bold text-primary">Demo login:</span> <code className="bg-white px-1 py-0.5 rounded shadow-sm">Z-Hajirii</code> / <code className="bg-white px-1 py-0.5 rounded shadow-sm">Admin@Hajirii</code>
                   <button
                     type="button"
                     onClick={() => {
-                      setUsername('admin');
-                      setPassword('Zeexai@admin');
+                      setUsername('Z-Hajirii');
+                      setPassword('Admin@Hajirii');
                       showToast('Credentials filled.');
                     }}
                     className="block mx-auto mt-2 text-primary hover:underline font-semibold"
@@ -1406,7 +2110,7 @@ export default function App() {
                     <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant custom-shadow flex items-center justify-between">
                       <div>
                         <p className="text-on-surface-variant font-semibold text-xs uppercase tracking-wider mb-1">Present</p>
-                        <h3 className="text-emerald-700 font-bold text-[32px]">{stats.present}</h3>
+                        <h3 className="text-emerald-700 font-bold text-[32px]">{stats.present + stats.late}</h3>
                       </div>
                       <div className="p-3 bg-emerald-100 rounded-full text-emerald-700">
                         <Check className="w-6 h-6" strokeWidth={3} />
@@ -1600,19 +2304,28 @@ export default function App() {
                       <h2 className="text-3xl font-bold text-primary tracking-tight">Active Attendance Dashboard</h2>
                       <p className="text-sm text-on-surface-variant font-medium">Configure daily shifts, watch clock-ins, and override permissions.</p>
                     </div>
-                    <button
-                      onClick={() => {
-                        // Mark all employees present as quick-run tool
-                        employees.forEach(emp => {
-                          handleUpdateStatus(emp.id, 'Present', selectedAttendanceDate);
-                        });
-                        showToast(`All users marked Present for ${selectedAttendanceDate}.`);
-                      }}
-                      className="bg-emerald-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 hover:bg-emerald-700 active:scale-95 transition-all shadow-md"
-                    >
-                      <Check className="w-4 h-4" />
-                      <span>Auto-Checkin All</span>
-                    </button>
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        onClick={() => setIsExportModalOpen(true)}
+                        className="bg-primary hover:brightness-110 active:scale-[0.98] text-on-primary px-5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all shadow-md cursor-pointer"
+                      >
+                        <Download className="w-4 h-4 text-emerald-400" />
+                        <span>Export Report</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          // Mark all employees present as quick-run tool
+                          employees.forEach(emp => {
+                            handleUpdateStatus(emp.id, 'Present', selectedAttendanceDate);
+                          });
+                          showToast(`All users marked Present for ${selectedAttendanceDate}.`);
+                        }}
+                        className="bg-emerald-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 hover:bg-emerald-700 active:scale-95 transition-all shadow-md cursor-pointer"
+                      >
+                        <Check className="w-4 h-4" />
+                        <span>Auto-Checkin All</span>
+                      </button>
+                    </div>
                   </section>
 
                   {/* Attendance Filter Bar */}
@@ -2112,8 +2825,8 @@ export default function App() {
 
                     <div className="md:ml-auto flex gap-3 flex-wrap">
                       <button
-                        onClick={() => showToast(`Successfully exported PDF profile file to disk for ${selectedEmployeeForProfile.name}.`)}
-                        className="px-6 py-2 border border-primary text-primary font-semibold text-sm rounded-lg hover:bg-primary/5 transition-colors"
+                        onClick={() => setIsProfileExportModalOpen(true)}
+                        className="px-6 py-2 border border-primary text-primary font-semibold text-sm rounded-lg hover:bg-primary/5 transition-colors cursor-pointer"
                       >
                         Export Profile
                       </button>
@@ -2134,7 +2847,7 @@ export default function App() {
                       </div>
                       <div>
                         <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Present Days</p>
-                        <p className="text-2xl font-bold">{profileStats.present}</p>
+                        <p className="text-2xl font-bold">{profileStats.present + profileStats.late}</p>
                       </div>
                     </div>
 
@@ -2831,6 +3544,181 @@ export default function App() {
                   className="px-5 py-2 bg-primary text-on-primary rounded-lg text-sm font-semibold hover:brightness-110 shadow-md"
                 >
                   {editingEmployee ? 'Save Changes' : 'Create User'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EXPORT RANGE MODAL DIALOG */}
+      {isExportModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsExportModalOpen(false)}></div>
+          
+          <div className="relative bg-white rounded-xl w-full max-w-md overflow-hidden custom-shadow border border-outline-variant/50 animate-bounce-short text-on-surface">
+            <div className="bg-primary p-4 text-on-primary flex justify-between items-center">
+              <h3 className="font-bold text-lg flex items-center gap-2">
+                <Download className="w-5 h-5 text-emerald-400" />
+                <span>Export Attendance Report</span>
+              </h3>
+              <button onClick={() => setIsExportModalOpen(false)} className="rounded-full hover:bg-white/20 p-1 text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleExportCSV(exportStartDate, exportEndDate);
+              }} 
+              className="p-6 space-y-4"
+            >
+              <p className="text-xs font-semibold text-on-surface-variant">
+                Select the date range to export the daywise attendance report with times for all users.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={exportStartDate}
+                    onChange={(e) => setExportStartDate(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={exportEndDate}
+                    onChange={(e) => setExportEndDate(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 border-t flex justify-end gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setIsExportModalOpen(false)}
+                  className="px-4 py-2 border border-outline-variant rounded-lg text-sm font-semibold hover:bg-surface-container-low cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportCSV(exportStartDate, exportEndDate)}
+                  className="px-4 py-2 border border-primary text-primary rounded-lg text-sm font-semibold hover:bg-primary/5 transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Download CSV</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportOverallPDF(exportStartDate, exportEndDate)}
+                  className="px-5 py-2 bg-primary text-on-primary rounded-lg text-sm font-semibold hover:brightness-110 shadow-md flex items-center gap-1.5 cursor-pointer"
+                >
+                  <FileText className="w-4 h-4 text-emerald-400" />
+                  <span>Download PDF</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EXPORT PROFILE RANGE MODAL DIALOG */}
+      {isProfileExportModalOpen && selectedEmployeeForProfile && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsProfileExportModalOpen(false)}></div>
+          
+          <div className="relative bg-white rounded-xl w-full max-w-md overflow-hidden custom-shadow border border-outline-variant/50 animate-bounce-short text-on-surface">
+            <div className="bg-primary p-4 text-on-primary flex justify-between items-center">
+              <h3 className="font-bold text-lg flex items-center gap-2">
+                <Download className="w-5 h-5 text-emerald-400" />
+                <span>Export Profile Report</span>
+              </h3>
+              <button onClick={() => setIsProfileExportModalOpen(false)} className="rounded-full hover:bg-white/20 p-1 text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleExportProfileCSV(selectedEmployeeForProfile, exportStartDate, exportEndDate);
+              }} 
+              className="p-6 space-y-4"
+            >
+              <div className="bg-surface-container-low p-3 rounded-lg border border-outline-variant/30 text-xs">
+                <p className="font-bold text-primary mb-1">Employee: {selectedEmployeeForProfile.name}</p>
+                <p className="text-on-surface-variant">ID: {selectedEmployeeForProfile.empId} | Role: {selectedEmployeeForProfile.role}</p>
+              </div>
+
+              <p className="text-xs font-semibold text-on-surface-variant">
+                Select the date range to export the daywise attendance report with times for this user.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={exportStartDate}
+                    onChange={(e) => setExportStartDate(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={exportEndDate}
+                    onChange={(e) => setExportEndDate(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 border-t flex justify-end gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setIsProfileExportModalOpen(false)}
+                  className="px-4 py-2 border border-outline-variant rounded-lg text-sm font-semibold hover:bg-surface-container-low cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportProfileCSV(selectedEmployeeForProfile, exportStartDate, exportEndDate)}
+                  className="px-4 py-2 border border-primary text-primary rounded-lg text-sm font-semibold hover:bg-primary/5 transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Download CSV</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportProfilePDF(selectedEmployeeForProfile, exportStartDate, exportEndDate)}
+                  className="px-5 py-2 bg-primary text-on-primary rounded-lg text-sm font-semibold hover:brightness-110 shadow-md flex items-center gap-1.5 cursor-pointer"
+                >
+                  <FileText className="w-4 h-4 text-emerald-400" />
+                  <span>Download PDF</span>
                 </button>
               </div>
             </form>

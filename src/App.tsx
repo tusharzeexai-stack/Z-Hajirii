@@ -1925,22 +1925,6 @@ export default function App() {
                   </label>
                 </div>
 
-                {/* Demo Credentials Helper */}
-                <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant text-[12px] text-on-surface-filter text-center">
-                  <span className="font-bold text-primary">Demo login:</span> <code className="bg-white px-1 py-0.5 rounded shadow-sm">Z-Hajirii</code> / <code className="bg-white px-1 py-0.5 rounded shadow-sm">Admin@Hajirii</code>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUsername('Z-Hajirii');
-                      setPassword('Admin@Hajirii');
-                      showToast('Credentials filled.');
-                    }}
-                    className="block mx-auto mt-2 text-primary hover:underline font-semibold"
-                  >
-                    Auto-Fill Credentials
-                  </button>
-                </div>
-
                 {/* Login Button */}
                 <button
                   type="submit"

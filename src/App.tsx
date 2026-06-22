@@ -60,15 +60,51 @@ const calculateDuration = (inTime: string, outTime: string) => {
   }
 };
 
-// Parse "Xh Ym" formatted total hours to decimal hours
+// Helper to extract break minutes from serialized total hours
+const getBreakMinutes = (totalHoursStr: string): number => {
+  if (!totalHoursStr) return 0;
+  const parts = totalHoursStr.split('|');
+  if (parts.length < 2) return 0;
+  const breakMins = parseInt(parts[1], 10);
+  return isNaN(breakMins) ? 0 : breakMins;
+};
+
+// Helper to calculate productive hours (total duration minus break)
+const getProductiveHoursStr = (totalHoursStr: string): string => {
+  if (!totalHoursStr || totalHoursStr === '--:--') return '0h 00m';
+  const rawHoursStr = totalHoursStr.split('|')[0];
+  const breakMins = getBreakMinutes(totalHoursStr);
+  if (breakMins === 0) return rawHoursStr;
+
+  try {
+    const parts = rawHoursStr.match(/(\d+)h\s*(\d+)m/i);
+    if (!parts) return rawHoursStr;
+    const hours = parseInt(parts[1], 10);
+    const minutes = parseInt(parts[2], 10);
+    const totalMins = hours * 60 + minutes;
+    const productiveMins = Math.max(0, totalMins - breakMins);
+    const prodHours = Math.floor(productiveMins / 60);
+    const prodMins = productiveMins % 60;
+    return `${prodHours}h ${prodMins.toString().padStart(2, '0')}m`;
+  } catch (err) {
+    console.error(err);
+    return rawHoursStr;
+  }
+};
+
+// Parse formatted total hours to decimal hours (taking break minutes into account)
 const parseTotalHoursToDecimal = (totalHoursStr: string): number => {
   if (!totalHoursStr || totalHoursStr === '0h 00m' || totalHoursStr === '--:--') return 0;
   try {
-    const parts = totalHoursStr.match(/(\d+)h\s*(\d+)m/i);
+    const rawHoursStr = totalHoursStr.split('|')[0];
+    const breakMins = getBreakMinutes(totalHoursStr);
+    const parts = rawHoursStr.match(/(\d+)h\s*(\d+)m/i);
     if (!parts) return 0;
     const hours = parseInt(parts[1], 10);
     const minutes = parseInt(parts[2], 10);
-    return hours + minutes / 60;
+    const totalMins = hours * 60 + minutes;
+    const productiveMins = Math.max(0, totalMins - breakMins);
+    return productiveMins / 60;
   } catch (err) {
     console.error(err);
     return 0;
@@ -1015,7 +1051,7 @@ export default function App() {
     };
 
     const dates = getDatesInRange(startDate, endDate);
-    let csvContent = 'Date,Employee ID,Employee Name,Role,Status,Clock In,Clock Out,Total Working Hours\n';
+    let csvContent = 'Date,Employee ID,Employee Name,Role,Status,Clock In,Clock Out,Total Working Hours,Break Time (mins),Productive Hours\n';
 
     dates.forEach(dateObj => {
       const dateStr = formatDateString(dateObj);
@@ -1040,8 +1076,12 @@ export default function App() {
         // Escape fields to prevent CSV injection or breaking on commas
         const escapedName = `"${emp.name.replace(/"/g, '""')}"`;
         const escapedRole = `"${emp.role.replace(/"/g, '""')}"`;
+        
+        const rawHours = totalHours.split('|')[0];
+        const breakMins = getBreakMinutes(totalHours);
+        const productiveHours = getProductiveHoursStr(totalHours);
 
-        csvContent += `${dateStr},${emp.empId},${escapedName},${escapedRole},${status},${clockIn},${clockOut},${totalHours}\n`;
+        csvContent += `${dateStr},${emp.empId},${escapedName},${escapedRole},${status},${clockIn},${clockOut},${rawHours},${breakMins},${productiveHours}\n`;
       });
     });
 
@@ -1093,7 +1133,7 @@ export default function App() {
     csvContent += `Employee ID,${employee.empId}\n`;
     csvContent += `Role,${employee.role}\n`;
     csvContent += `Email,${employee.email}\n\n`;
-    csvContent += 'Date,Status,Clock In,Clock Out,Total Working Hours,Minutes Late\n';
+    csvContent += 'Date,Status,Clock In,Clock Out,Total Working Hours,Break Time (mins),Productive Hours,Minutes Late\n';
 
     dates.forEach(dateObj => {
       const dateStr = formatDateString(dateObj);
@@ -1118,7 +1158,11 @@ export default function App() {
         status = 'Weekend';
       }
 
-      csvContent += `${dateStr},${status},${clockIn},${clockOut},${totalHours},${minsLate}\n`;
+      const rawHours = totalHours.split('|')[0];
+      const breakMins = getBreakMinutes(totalHours);
+      const productiveHours = getProductiveHoursStr(totalHours);
+
+      csvContent += `${dateStr},${status},${clockIn},${clockOut},${rawHours},${breakMins},${productiveHours},${minsLate}\n`;
     });
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -1200,13 +1244,19 @@ export default function App() {
       else if (status === 'Absent') absentCount++;
       else if (status === 'Weekend') weekendCount++;
 
+      const rawHours = totalHours.split('|')[0];
+      const breakMins = getBreakMinutes(totalHours);
+      const productiveHours = getProductiveHoursStr(totalHours);
+
       return `
         <tr>
           <td>${dateStr}</td>
           <td><span class="badge badge-${status.toLowerCase()}">${status}</span></td>
           <td>${clockIn}</td>
           <td>${clockOut}</td>
-          <td>${totalHours}</td>
+          <td>${rawHours}</td>
+          <td>${breakMins > 0 ? breakMins + ' mins' : '--'}</td>
+          <td><strong>${productiveHours}</strong></td>
           <td>${minsLate > 0 ? minsLate + ' mins' : '--'}</td>
         </tr>
       `;
@@ -1394,6 +1444,8 @@ export default function App() {
               <th>Clock In</th>
               <th>Clock Out</th>
               <th>Total Hours</th>
+              <th>Break</th>
+              <th>Productive Hours</th>
               <th>Late Duration</th>
             </tr>
           </thead>
@@ -1483,6 +1535,10 @@ export default function App() {
         else if (status === 'Late') totalLateSum++;
         else if (status === 'Absent') totalAbsentSum++;
 
+        const rawHours = totalHours.split('|')[0];
+        const breakMins = getBreakMinutes(totalHours);
+        const productiveHours = getProductiveHoursStr(totalHours);
+
         tableRows += `
           <tr>
             <td>${dateStr}</td>
@@ -1492,7 +1548,9 @@ export default function App() {
             <td><span class="badge badge-${status.toLowerCase()}">${status}</span></td>
             <td>${clockIn}</td>
             <td>${clockOut}</td>
-            <td>${totalHours}</td>
+            <td>${rawHours}</td>
+            <td>${breakMins > 0 ? breakMins + ' mins' : '--'}</td>
+            <td><strong>${productiveHours}</strong></td>
           </tr>
         `;
       });
@@ -1645,6 +1703,8 @@ export default function App() {
               <th>Clock In</th>
               <th>Clock Out</th>
               <th>Total Hours</th>
+              <th>Break</th>
+              <th>Productive Hours</th>
             </tr>
           </thead>
           <tbody>
@@ -1674,6 +1734,10 @@ export default function App() {
     const inTimeStr = editStatus === 'Absent' ? '--:--' : time24To12(editClockIn);
     const outTimeStr = editStatus === 'Absent' ? '--:--' : time24To12(editClockOut);
     const totalHours = calculateDuration(inTimeStr, outTimeStr);
+    
+    const existingLog = attendanceLogs.find(l => l.id === logId);
+    const breakMins = existingLog ? getBreakMinutes(existingLog.totalHours) : 0;
+    const updatedTotalHours = breakMins > 0 ? `${totalHours}|${breakMins}` : totalHours;
 
     let finalStatus = editStatus;
     if (finalStatus !== 'Absent' && inTimeStr !== '--:--') {
@@ -1687,7 +1751,7 @@ export default function App() {
         .update({
           clock_in: inTimeStr,
           clock_out: outTimeStr,
-          total_hours: totalHours,
+          total_hours: updatedTotalHours,
           status: finalStatus
         })
         .eq('id', logId);
@@ -1700,6 +1764,35 @@ export default function App() {
     } catch (err) {
       console.error(err);
       showToast('Failed to update attendance log.');
+    }
+  };
+
+  // Update break minutes for an attendance record dynamically
+  const handleUpdateBreakMinutes = async (logId: string, breakMins: number) => {
+    const existingLog = attendanceLogs.find(l => l.id === logId);
+    if (!existingLog) {
+      showToast('Attendance log not found.');
+      return;
+    }
+
+    const rawHoursStr = existingLog.totalHours.split('|')[0];
+    const updatedTotalHours = breakMins > 0 ? `${rawHoursStr}|${breakMins}` : rawHoursStr;
+
+    try {
+      const { error } = await supabase
+        .from('attendance_logs')
+        .update({
+          total_hours: updatedTotalHours
+        })
+        .eq('id', logId);
+
+      if (error) throw error;
+
+      showToast('Break time updated.');
+      await fetchData();
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to update break time.');
     }
   };
 
@@ -3173,7 +3266,8 @@ export default function App() {
                             <th className="px-6 py-3">Date</th>
                             <th className="px-6 py-3">Clock In</th>
                             <th className="px-6 py-3">Clock Out</th>
-                            <th className="px-6 py-3">Total Working Hours</th>
+                            <th className="px-6 py-3">Working Hours</th>
+                            <th className="px-6 py-3">Break</th>
                             <th className="px-6 py-3">Status</th>
                             <th className="px-6 py-3 text-center">Action</th>
                           </tr>
@@ -3219,15 +3313,40 @@ export default function App() {
                                       log.clockOut
                                     )}
                                   </td>
-                                  <td className="px-6 py-4 font-semibold text-sm text-primary">
+                                  <td className="px-6 py-4 text-sm">
                                     {isEditing ? (
-                                      calculateDuration(
-                                        editStatus === 'Absent' ? '--:--' : time24To12(editClockIn),
-                                        editStatus === 'Absent' ? '--:--' : time24To12(editClockOut)
-                                      )
+                                      <span className="font-semibold text-primary">
+                                        {calculateDuration(
+                                          editStatus === 'Absent' ? '--:--' : time24To12(editClockIn),
+                                          editStatus === 'Absent' ? '--:--' : time24To12(editClockOut)
+                                        )}
+                                      </span>
+                                    ) : getBreakMinutes(log.totalHours) > 0 ? (
+                                      <div className="flex flex-col gap-0.5">
+                                        <span className="text-[12px] text-on-surface-variant/75 font-medium">Total: {log.totalHours.split('|')[0]}</span>
+                                        <span className="font-bold text-primary text-sm whitespace-nowrap">Productive: {getProductiveHoursStr(log.totalHours)}</span>
+                                      </div>
                                     ) : (
-                                      log.totalHours
+                                      <span className="font-semibold text-primary">{log.totalHours.split('|')[0]}</span>
                                     )}
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <select
+                                      disabled={log.status === 'Absent' || isEditing}
+                                      value={getBreakMinutes(log.totalHours)}
+                                      onChange={(e) => handleUpdateBreakMinutes(log.id, parseInt(e.target.value, 10))}
+                                      className="bg-surface-container-low border border-outline-variant rounded px-2 py-1 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-white"
+                                    >
+                                      <option value="0">0 mins</option>
+                                      <option value="5">5 mins</option>
+                                      <option value="10">10 mins</option>
+                                      <option value="15">15 mins</option>
+                                      <option value="30">30 mins</option>
+                                      <option value="45">45 mins</option>
+                                      <option value="60">60 mins</option>
+                                      <option value="90">90 mins</option>
+                                      <option value="120">120 mins</option>
+                                    </select>
                                   </td>
                                   <td className="px-6 py-4">
                                     {isEditing ? (

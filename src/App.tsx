@@ -3268,6 +3268,7 @@ export default function App() {
                             <th className="px-6 py-3">Clock Out</th>
                             <th className="px-6 py-3">Working Hours</th>
                             <th className="px-6 py-3">Break</th>
+                            <th className="px-6 py-3">Productivity</th>
                             <th className="px-6 py-3">Status</th>
                             <th className="px-6 py-3 text-center">Action</th>
                           </tr>
@@ -3313,21 +3314,14 @@ export default function App() {
                                       log.clockOut
                                     )}
                                   </td>
-                                  <td className="px-6 py-4 text-sm">
+                                  <td className="px-6 py-4 text-sm font-semibold text-primary">
                                     {isEditing ? (
-                                      <span className="font-semibold text-primary">
-                                        {calculateDuration(
-                                          editStatus === 'Absent' ? '--:--' : time24To12(editClockIn),
-                                          editStatus === 'Absent' ? '--:--' : time24To12(editClockOut)
-                                        )}
-                                      </span>
-                                    ) : getBreakMinutes(log.totalHours) > 0 ? (
-                                      <div className="flex flex-col gap-0.5">
-                                        <span className="text-[12px] text-on-surface-variant/75 font-medium">Total: {log.totalHours.split('|')[0]}</span>
-                                        <span className="font-bold text-primary text-sm whitespace-nowrap">Productive: {getProductiveHoursStr(log.totalHours)}</span>
-                                      </div>
+                                      calculateDuration(
+                                        editStatus === 'Absent' ? '--:--' : time24To12(editClockIn),
+                                        editStatus === 'Absent' ? '--:--' : time24To12(editClockOut)
+                                      )
                                     ) : (
-                                      <span className="font-semibold text-primary">{log.totalHours.split('|')[0]}</span>
+                                      log.totalHours.split('|')[0]
                                     )}
                                   </td>
                                   <td className="px-6 py-4">
@@ -3347,6 +3341,18 @@ export default function App() {
                                       <option value="90">90 mins</option>
                                       <option value="120">120 mins</option>
                                     </select>
+                                  </td>
+                                  <td className="px-6 py-4 text-sm font-bold text-primary">
+                                    {isEditing ? (
+                                      getProductiveHoursStr(
+                                        calculateDuration(
+                                          editStatus === 'Absent' ? '--:--' : time24To12(editClockIn),
+                                          editStatus === 'Absent' ? '--:--' : time24To12(editClockOut)
+                                        ) + `|${getBreakMinutes(log.totalHours)}`
+                                      )
+                                    ) : (
+                                      getProductiveHoursStr(log.totalHours)
+                                    )}
                                   </td>
                                   <td className="px-6 py-4">
                                     {isEditing ? (

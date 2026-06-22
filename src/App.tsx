@@ -69,6 +69,13 @@ const getBreakMinutes = (totalHoursStr: string): number => {
   return isNaN(breakMins) ? 0 : breakMins;
 };
 
+// Helper to extract remark from serialized total hours
+const getRemark = (totalHoursStr: string): string => {
+  if (!totalHoursStr) return '';
+  const parts = totalHoursStr.split('|');
+  return parts.length >= 3 ? parts[2] : '';
+};
+
 // Helper to calculate productive hours (total duration minus break)
 const getProductiveHoursStr = (totalHoursStr: string): string => {
   if (!totalHoursStr || totalHoursStr === '--:--') return '0h 00m';
@@ -214,6 +221,7 @@ export default function App() {
   const [editClockIn, setEditClockIn] = useState<string>('');
   const [editClockOut, setEditClockOut] = useState<string>('');
   const [editStatus, setEditStatus] = useState<'Present' | 'Absent' | 'Late'>('Present');
+  const [editRemark, setEditRemark] = useState<string>('');
 
   // Chart Metric Toggle State ('status' | 'hours')
   const [chartMetric, setChartMetric] = useState<'status' | 'hours'>('status');
@@ -982,13 +990,17 @@ export default function App() {
     const now = new Date();
     const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
     const totalHours = calculateDuration(existingLog.clockIn, timeStr);
+    
+    const breakMins = getBreakMinutes(existingLog.totalHours);
+    const existingRemark = getRemark(existingLog.totalHours);
+    const updatedTotalHours = `${totalHours}|${breakMins}|${existingRemark}`;
 
     try {
       const { error } = await supabase
         .from('attendance_logs')
         .update({
           clock_out: timeStr,
-          total_hours: totalHours
+          total_hours: updatedTotalHours
         })
         .eq('id', existingLog.id);
       if (error) throw error;
@@ -1051,7 +1063,7 @@ export default function App() {
     };
 
     const dates = getDatesInRange(startDate, endDate);
-    let csvContent = 'Date,Employee ID,Employee Name,Role,Status,Clock In,Clock Out,Total Working Hours,Break Time (mins),Productive Hours\n';
+    let csvContent = 'Date,Employee ID,Employee Name,Role,Status,Clock In,Clock Out,Total Working Hours,Break Time (mins),Productive Hours,Remark\n';
 
     dates.forEach(dateObj => {
       const dateStr = formatDateString(dateObj);
@@ -1080,8 +1092,10 @@ export default function App() {
         const rawHours = totalHours.split('|')[0];
         const breakMins = getBreakMinutes(totalHours);
         const productiveHours = getProductiveHoursStr(totalHours);
+        const remark = getRemark(totalHours);
+        const escapedRemark = `"${remark.replace(/"/g, '""')}"`;
 
-        csvContent += `${dateStr},${emp.empId},${escapedName},${escapedRole},${status},${clockIn},${clockOut},${rawHours},${breakMins},${productiveHours}\n`;
+        csvContent += `${dateStr},${emp.empId},${escapedName},${escapedRole},${status},${clockIn},${clockOut},${rawHours},${breakMins},${productiveHours},${escapedRemark}\n`;
       });
     });
 
@@ -1133,7 +1147,7 @@ export default function App() {
     csvContent += `Employee ID,${employee.empId}\n`;
     csvContent += `Role,${employee.role}\n`;
     csvContent += `Email,${employee.email}\n\n`;
-    csvContent += 'Date,Status,Clock In,Clock Out,Total Working Hours,Break Time (mins),Productive Hours,Minutes Late\n';
+    csvContent += 'Date,Status,Clock In,Clock Out,Total Working Hours,Break Time (mins),Productive Hours,Remark,Minutes Late\n';
 
     dates.forEach(dateObj => {
       const dateStr = formatDateString(dateObj);
@@ -1161,8 +1175,10 @@ export default function App() {
       const rawHours = totalHours.split('|')[0];
       const breakMins = getBreakMinutes(totalHours);
       const productiveHours = getProductiveHoursStr(totalHours);
+      const remark = getRemark(totalHours);
+      const escapedRemark = `"${remark.replace(/"/g, '""')}"`;
 
-      csvContent += `${dateStr},${status},${clockIn},${clockOut},${rawHours},${breakMins},${productiveHours},${minsLate}\n`;
+      csvContent += `${dateStr},${status},${clockIn},${clockOut},${rawHours},${breakMins},${productiveHours},${escapedRemark},${minsLate}\n`;
     });
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -1247,6 +1263,7 @@ export default function App() {
       const rawHours = totalHours.split('|')[0];
       const breakMins = getBreakMinutes(totalHours);
       const productiveHours = getProductiveHoursStr(totalHours);
+      const remark = getRemark(totalHours);
 
       return `
         <tr>
@@ -1257,6 +1274,7 @@ export default function App() {
           <td>${rawHours}</td>
           <td>${breakMins > 0 ? breakMins + ' mins' : '--'}</td>
           <td><strong>${productiveHours}</strong></td>
+          <td>${remark || '--'}</td>
           <td>${minsLate > 0 ? minsLate + ' mins' : '--'}</td>
         </tr>
       `;
@@ -1446,6 +1464,7 @@ export default function App() {
               <th>Total Hours</th>
               <th>Break</th>
               <th>Productive Hours</th>
+              <th>Remark</th>
               <th>Late Duration</th>
             </tr>
           </thead>
@@ -1538,6 +1557,7 @@ export default function App() {
         const rawHours = totalHours.split('|')[0];
         const breakMins = getBreakMinutes(totalHours);
         const productiveHours = getProductiveHoursStr(totalHours);
+        const remark = getRemark(totalHours);
 
         tableRows += `
           <tr>
@@ -1551,6 +1571,7 @@ export default function App() {
             <td>${rawHours}</td>
             <td>${breakMins > 0 ? breakMins + ' mins' : '--'}</td>
             <td><strong>${productiveHours}</strong></td>
+            <td>${remark || '--'}</td>
           </tr>
         `;
       });
@@ -1705,6 +1726,7 @@ export default function App() {
               <th>Total Hours</th>
               <th>Break</th>
               <th>Productive Hours</th>
+              <th>Remark</th>
             </tr>
           </thead>
           <tbody>
@@ -1737,7 +1759,7 @@ export default function App() {
     
     const existingLog = attendanceLogs.find(l => l.id === logId);
     const breakMins = existingLog ? getBreakMinutes(existingLog.totalHours) : 0;
-    const updatedTotalHours = breakMins > 0 ? `${totalHours}|${breakMins}` : totalHours;
+    const updatedTotalHours = `${totalHours}|${breakMins}|${editRemark.trim()}`;
 
     let finalStatus = editStatus;
     if (finalStatus !== 'Absent' && inTimeStr !== '--:--') {
@@ -1776,7 +1798,8 @@ export default function App() {
     }
 
     const rawHoursStr = existingLog.totalHours.split('|')[0];
-    const updatedTotalHours = breakMins > 0 ? `${rawHoursStr}|${breakMins}` : rawHoursStr;
+    const existingRemark = getRemark(existingLog.totalHours);
+    const updatedTotalHours = `${rawHoursStr}|${breakMins}|${existingRemark}`;
 
     try {
       const { error } = await supabase
@@ -3269,6 +3292,7 @@ export default function App() {
                             <th className="px-6 py-3">Working Hours</th>
                             <th className="px-6 py-3">Break</th>
                             <th className="px-6 py-3">Productivity</th>
+                            <th className="px-6 py-3">Remark</th>
                             <th className="px-6 py-3">Status</th>
                             <th className="px-6 py-3 text-center">Action</th>
                           </tr>
@@ -3354,6 +3378,19 @@ export default function App() {
                                       getProductiveHoursStr(log.totalHours)
                                     )}
                                   </td>
+                                  <td className="px-6 py-4 text-sm text-on-surface-variant max-w-[180px] truncate">
+                                    {isEditing ? (
+                                      <input
+                                        type="text"
+                                        value={editRemark}
+                                        onChange={(e) => setEditRemark(e.target.value)}
+                                        placeholder="Add remark..."
+                                        className="bg-surface-container-low border border-outline-variant rounded p-1 text-sm outline-none focus:ring-1 focus:ring-primary w-40"
+                                      />
+                                    ) : (
+                                      getRemark(log.totalHours) || <span className="text-on-surface-variant/40 italic">--</span>
+                                    )}
+                                  </td>
                                   <td className="px-6 py-4">
                                     {isEditing ? (
                                       <select
@@ -3419,6 +3456,7 @@ export default function App() {
                                             setEditClockIn(time12To24(log.clockIn));
                                             setEditClockOut(time12To24(log.clockOut));
                                             setEditStatus(log.status as 'Present' | 'Absent' | 'Late');
+                                            setEditRemark(getRemark(log.totalHours));
                                           }}
                                           className="p-1.5 rounded-full border border-outline-variant text-primary hover:bg-primary/10 hover:border-primary active:scale-95 transition-all cursor-pointer"
                                         >

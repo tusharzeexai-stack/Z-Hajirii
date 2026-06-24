@@ -76,12 +76,31 @@ const getRemark = (totalHoursStr: string): string => {
   return parts.length >= 3 ? parts[2] : '';
 };
 
-// Helper to calculate productive hours (total duration minus break)
+// Helper to extract extra working minutes from serialized total hours
+const getExtraHoursMinutes = (totalHoursStr: string): number => {
+  if (!totalHoursStr) return 0;
+  const parts = totalHoursStr.split('|');
+  if (parts.length < 4) return 0;
+  const extraMins = parseInt(parts[3], 10);
+  return isNaN(extraMins) ? 0 : extraMins;
+};
+
+// Helper to format extra working minutes as string
+const getExtraHoursStr = (totalHoursStr: string): string => {
+  const extraMins = getExtraHoursMinutes(totalHoursStr);
+  if (extraMins === 0) return '0h 00m';
+  const hrs = Math.floor(extraMins / 60);
+  const mins = extraMins % 60;
+  return `${hrs}h ${mins.toString().padStart(2, '0')}m`;
+};
+
+// Helper to calculate productive hours (total duration minus break plus extra hours)
 const getProductiveHoursStr = (totalHoursStr: string): string => {
   if (!totalHoursStr || totalHoursStr === '--:--') return '0h 00m';
   const rawHoursStr = totalHoursStr.split('|')[0];
   const breakMins = getBreakMinutes(totalHoursStr);
-  if (breakMins === 0) return rawHoursStr;
+  const extraMins = getExtraHoursMinutes(totalHoursStr);
+  if (breakMins === 0 && extraMins === 0) return rawHoursStr;
 
   try {
     const parts = rawHoursStr.match(/(\d+)h\s*(\d+)m/i);
@@ -89,7 +108,7 @@ const getProductiveHoursStr = (totalHoursStr: string): string => {
     const hours = parseInt(parts[1], 10);
     const minutes = parseInt(parts[2], 10);
     const totalMins = hours * 60 + minutes;
-    const productiveMins = Math.max(0, totalMins - breakMins);
+    const productiveMins = Math.max(0, totalMins - breakMins + extraMins);
     const prodHours = Math.floor(productiveMins / 60);
     const prodMins = productiveMins % 60;
     return `${prodHours}h ${prodMins.toString().padStart(2, '0')}m`;
@@ -99,18 +118,19 @@ const getProductiveHoursStr = (totalHoursStr: string): string => {
   }
 };
 
-// Parse formatted total hours to decimal hours (taking break minutes into account)
+// Parse formatted total hours to decimal hours (taking break minutes and extra hours into account)
 const parseTotalHoursToDecimal = (totalHoursStr: string): number => {
   if (!totalHoursStr || totalHoursStr === '0h 00m' || totalHoursStr === '--:--') return 0;
   try {
     const rawHoursStr = totalHoursStr.split('|')[0];
     const breakMins = getBreakMinutes(totalHoursStr);
+    const extraMins = getExtraHoursMinutes(totalHoursStr);
     const parts = rawHoursStr.match(/(\d+)h\s*(\d+)m/i);
     if (!parts) return 0;
     const hours = parseInt(parts[1], 10);
     const minutes = parseInt(parts[2], 10);
     const totalMins = hours * 60 + minutes;
-    const productiveMins = Math.max(0, totalMins - breakMins);
+    const productiveMins = Math.max(0, totalMins - breakMins + extraMins);
     return productiveMins / 60;
   } catch (err) {
     console.error(err);
@@ -222,6 +242,8 @@ export default function App() {
   const [editClockOut, setEditClockOut] = useState<string>('');
   const [editStatus, setEditStatus] = useState<'Present' | 'Absent' | 'Late'>('Present');
   const [editRemark, setEditRemark] = useState<string>('');
+  const [editExtraHoursHrs, setEditExtraHoursHrs] = useState<number>(0);
+  const [editExtraHoursMins, setEditExtraHoursMins] = useState<number>(0);
 
   // Chart Metric Toggle State ('status' | 'hours')
   const [chartMetric, setChartMetric] = useState<'status' | 'hours'>('status');
@@ -993,7 +1015,8 @@ export default function App() {
     
     const breakMins = getBreakMinutes(existingLog.totalHours);
     const existingRemark = getRemark(existingLog.totalHours);
-    const updatedTotalHours = `${totalHours}|${breakMins}|${existingRemark}`;
+    const existingExtraMins = getExtraHoursMinutes(existingLog.totalHours);
+    const updatedTotalHours = `${totalHours}|${breakMins}|${existingRemark}|${existingExtraMins}`;
 
     try {
       const { error } = await supabase
@@ -1063,7 +1086,7 @@ export default function App() {
     };
 
     const dates = getDatesInRange(startDate, endDate);
-    let csvContent = 'Date,Employee ID,Employee Name,Role,Status,Clock In,Clock Out,Total Working Hours,Break Time (mins),Productive Hours,Remark\n';
+    let csvContent = 'Date,Employee ID,Employee Name,Role,Status,Clock In,Clock Out,Total Working Hours,Break Time (mins),Extra Working Hours,Productive Hours,Remark\n';
 
     dates.forEach(dateObj => {
       const dateStr = formatDateString(dateObj);
@@ -1091,11 +1114,12 @@ export default function App() {
         
         const rawHours = totalHours.split('|')[0];
         const breakMins = getBreakMinutes(totalHours);
+        const extraHoursStr = getExtraHoursStr(totalHours);
         const productiveHours = getProductiveHoursStr(totalHours);
         const remark = getRemark(totalHours);
         const escapedRemark = `"${remark.replace(/"/g, '""')}"`;
 
-        csvContent += `${dateStr},${emp.empId},${escapedName},${escapedRole},${status},${clockIn},${clockOut},${rawHours},${breakMins},${productiveHours},${escapedRemark}\n`;
+        csvContent += `${dateStr},${emp.empId},${escapedName},${escapedRole},${status},${clockIn},${clockOut},${rawHours},${breakMins},${extraHoursStr},${productiveHours},${escapedRemark}\n`;
       });
     });
 
@@ -1147,7 +1171,7 @@ export default function App() {
     csvContent += `Employee ID,${employee.empId}\n`;
     csvContent += `Role,${employee.role}\n`;
     csvContent += `Email,${employee.email}\n\n`;
-    csvContent += 'Date,Status,Clock In,Clock Out,Total Working Hours,Break Time (mins),Productive Hours,Remark,Minutes Late\n';
+    csvContent += 'Date,Status,Clock In,Clock Out,Total Working Hours,Break Time (mins),Extra Working Hours,Productive Hours,Remark,Minutes Late\n';
 
     dates.forEach(dateObj => {
       const dateStr = formatDateString(dateObj);
@@ -1174,11 +1198,12 @@ export default function App() {
 
       const rawHours = totalHours.split('|')[0];
       const breakMins = getBreakMinutes(totalHours);
+      const extraHoursStr = getExtraHoursStr(totalHours);
       const productiveHours = getProductiveHoursStr(totalHours);
       const remark = getRemark(totalHours);
       const escapedRemark = `"${remark.replace(/"/g, '""')}"`;
 
-      csvContent += `${dateStr},${status},${clockIn},${clockOut},${rawHours},${breakMins},${productiveHours},${escapedRemark},${minsLate}\n`;
+      csvContent += `${dateStr},${status},${clockIn},${clockOut},${rawHours},${breakMins},${extraHoursStr},${productiveHours},${escapedRemark},${minsLate}\n`;
     });
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -1262,6 +1287,7 @@ export default function App() {
 
       const rawHours = totalHours.split('|')[0];
       const breakMins = getBreakMinutes(totalHours);
+      const extraHoursStr = getExtraHoursStr(totalHours);
       const productiveHours = getProductiveHoursStr(totalHours);
       const remark = getRemark(totalHours);
 
@@ -1273,6 +1299,7 @@ export default function App() {
           <td>${clockOut}</td>
           <td>${rawHours}</td>
           <td>${breakMins > 0 ? breakMins + ' mins' : '--'}</td>
+          <td>${extraHoursStr === '0h 00m' ? '--' : extraHoursStr}</td>
           <td><strong>${productiveHours}</strong></td>
           <td>${remark || '--'}</td>
           <td>${minsLate > 0 ? minsLate + ' mins' : '--'}</td>
@@ -1463,6 +1490,7 @@ export default function App() {
               <th>Clock Out</th>
               <th>Total Hours</th>
               <th>Break</th>
+              <th>Extra Hours</th>
               <th>Productive Hours</th>
               <th>Remark</th>
               <th>Late Duration</th>
@@ -1556,6 +1584,7 @@ export default function App() {
 
         const rawHours = totalHours.split('|')[0];
         const breakMins = getBreakMinutes(totalHours);
+        const extraHoursStr = getExtraHoursStr(totalHours);
         const productiveHours = getProductiveHoursStr(totalHours);
         const remark = getRemark(totalHours);
 
@@ -1570,6 +1599,7 @@ export default function App() {
             <td>${clockOut}</td>
             <td>${rawHours}</td>
             <td>${breakMins > 0 ? breakMins + ' mins' : '--'}</td>
+            <td>${extraHoursStr === '0h 00m' ? '--' : extraHoursStr}</td>
             <td><strong>${productiveHours}</strong></td>
             <td>${remark || '--'}</td>
           </tr>
@@ -1725,6 +1755,7 @@ export default function App() {
               <th>Clock Out</th>
               <th>Total Hours</th>
               <th>Break</th>
+              <th>Extra Hours</th>
               <th>Productive Hours</th>
               <th>Remark</th>
             </tr>
@@ -1758,8 +1789,9 @@ export default function App() {
     const totalHours = calculateDuration(inTimeStr, outTimeStr);
     
     const existingLog = attendanceLogs.find(l => l.id === logId);
-    const breakMins = existingLog ? getBreakMinutes(existingLog.totalHours) : 0;
-    const updatedTotalHours = `${totalHours}|${breakMins}|${editRemark.trim()}`;
+    const breakMins = (existingLog && editStatus !== 'Absent') ? getBreakMinutes(existingLog.totalHours) : 0;
+    const totalExtraMins = editStatus === 'Absent' ? 0 : (editExtraHoursHrs * 60 + editExtraHoursMins);
+    const updatedTotalHours = `${totalHours}|${breakMins}|${editStatus === 'Absent' ? '' : editRemark.trim()}|${totalExtraMins}`;
 
     let finalStatus = editStatus;
     if (finalStatus !== 'Absent' && inTimeStr !== '--:--') {
@@ -1799,7 +1831,8 @@ export default function App() {
 
     const rawHoursStr = existingLog.totalHours.split('|')[0];
     const existingRemark = getRemark(existingLog.totalHours);
-    const updatedTotalHours = `${rawHoursStr}|${breakMins}|${existingRemark}`;
+    const existingExtraMins = getExtraHoursMinutes(existingLog.totalHours);
+    const updatedTotalHours = `${rawHoursStr}|${breakMins}|${existingRemark}|${existingExtraMins}`;
 
     try {
       const { error } = await supabase
@@ -3291,6 +3324,7 @@ export default function App() {
                             <th className="px-6 py-3">Clock Out</th>
                             <th className="px-6 py-3">Working Hours</th>
                             <th className="px-6 py-3">Break</th>
+                            <th className="px-6 py-3">Extra Hours</th>
                             <th className="px-6 py-3">Productivity</th>
                             <th className="px-6 py-3">Remark</th>
                             <th className="px-6 py-3">Status</th>
@@ -3366,13 +3400,42 @@ export default function App() {
                                       <option value="120">120 mins</option>
                                     </select>
                                   </td>
+                                  <td className="px-6 py-4">
+                                    {isEditing ? (
+                                      <div className="flex items-center gap-1">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          value={editExtraHoursHrs}
+                                          onChange={(e) => setEditExtraHoursHrs(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                                          className="bg-surface-container-low border border-outline-variant rounded p-1 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary w-11 text-center bg-white"
+                                        />
+                                        <span className="text-[10px] text-on-surface-variant font-bold">h</span>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          max="59"
+                                          value={editExtraHoursMins}
+                                          onChange={(e) => setEditExtraHoursMins(Math.max(0, Math.min(59, parseInt(e.target.value, 10) || 0)))}
+                                          className="bg-surface-container-low border border-outline-variant rounded p-1 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary w-11 text-center bg-white"
+                                        />
+                                        <span className="text-[10px] text-on-surface-variant font-bold">m</span>
+                                      </div>
+                                    ) : (
+                                      getExtraHoursStr(log.totalHours) === '0h 00m' ? (
+                                        <span className="text-on-surface-variant/40 italic">--</span>
+                                      ) : (
+                                        getExtraHoursStr(log.totalHours)
+                                      )
+                                    )}
+                                  </td>
                                   <td className="px-6 py-4 text-sm font-bold text-primary">
                                     {isEditing ? (
                                       getProductiveHoursStr(
                                         calculateDuration(
                                           editStatus === 'Absent' ? '--:--' : time24To12(editClockIn),
                                           editStatus === 'Absent' ? '--:--' : time24To12(editClockOut)
-                                        ) + `|${getBreakMinutes(log.totalHours)}`
+                                        ) + `|${getBreakMinutes(log.totalHours)}|${editRemark.trim()}|${editExtraHoursHrs * 60 + editExtraHoursMins}`
                                       )
                                     ) : (
                                       getProductiveHoursStr(log.totalHours)
@@ -3457,6 +3520,9 @@ export default function App() {
                                             setEditClockOut(time12To24(log.clockOut));
                                             setEditStatus(log.status as 'Present' | 'Absent' | 'Late');
                                             setEditRemark(getRemark(log.totalHours));
+                                            const extraMins = getExtraHoursMinutes(log.totalHours);
+                                            setEditExtraHoursHrs(Math.floor(extraMins / 60));
+                                            setEditExtraHoursMins(extraMins % 60);
                                           }}
                                           className="p-1.5 rounded-full border border-outline-variant text-primary hover:bg-primary/10 hover:border-primary active:scale-95 transition-all cursor-pointer"
                                         >

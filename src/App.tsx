@@ -103,15 +103,15 @@ const getBreakAllowanceMinutes = (totalHoursStr: string): number => {
   return isNaN(allowance) ? 0 : allowance;
 };
 
-// Helper to calculate productive hours (total duration minus net break plus extra hours)
+// Helper to calculate productive hours (total duration minus break and minus break allowance plus extra hours)
 const getProductiveHoursStr = (totalHoursStr: string): string => {
   if (!totalHoursStr || totalHoursStr === '--:--') return '0h 00m';
   const rawHoursStr = totalHoursStr.split('|')[0];
   const breakMins = getBreakMinutes(totalHoursStr);
   const breakAllowance = getBreakAllowanceMinutes(totalHoursStr);
-  const netBreakMins = Math.max(0, breakMins - breakAllowance);
+  const totalDeductions = breakMins + breakAllowance;
   const extraMins = getExtraHoursMinutes(totalHoursStr);
-  if (netBreakMins === 0 && extraMins === 0) return rawHoursStr;
+  if (totalDeductions === 0 && extraMins === 0) return rawHoursStr;
 
   try {
     const parts = rawHoursStr.match(/(\d+)h\s*(\d+)m/i);
@@ -119,7 +119,7 @@ const getProductiveHoursStr = (totalHoursStr: string): string => {
     const hours = parseInt(parts[1], 10);
     const minutes = parseInt(parts[2], 10);
     const totalMins = hours * 60 + minutes;
-    const productiveMins = Math.max(0, totalMins - netBreakMins + extraMins);
+    const productiveMins = Math.max(0, totalMins - totalDeductions + extraMins);
     const prodHours = Math.floor(productiveMins / 60);
     const prodMins = productiveMins % 60;
     return `${prodHours}h ${prodMins.toString().padStart(2, '0')}m`;
@@ -129,21 +129,21 @@ const getProductiveHoursStr = (totalHoursStr: string): string => {
   }
 };
 
-// Parse formatted total hours to decimal hours (taking break minutes, allowance, and extra hours into account)
+// Parse formatted total hours to decimal hours (taking break minutes, break allowance, and extra hours into account)
 const parseTotalHoursToDecimal = (totalHoursStr: string): number => {
   if (!totalHoursStr || totalHoursStr === '0h 00m' || totalHoursStr === '--:--') return 0;
   try {
     const rawHoursStr = totalHoursStr.split('|')[0];
     const breakMins = getBreakMinutes(totalHoursStr);
     const breakAllowance = getBreakAllowanceMinutes(totalHoursStr);
-    const netBreakMins = Math.max(0, breakMins - breakAllowance);
+    const totalDeductions = breakMins + breakAllowance;
     const extraMins = getExtraHoursMinutes(totalHoursStr);
     const parts = rawHoursStr.match(/(\d+)h\s*(\d+)m/i);
     if (!parts) return 0;
     const hours = parseInt(parts[1], 10);
     const minutes = parseInt(parts[2], 10);
     const totalMins = hours * 60 + minutes;
-    const productiveMins = Math.max(0, totalMins - netBreakMins + extraMins);
+    const productiveMins = Math.max(0, totalMins - totalDeductions + extraMins);
     return productiveMins / 60;
   } catch (err) {
     console.error(err);

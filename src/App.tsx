@@ -94,13 +94,24 @@ const getExtraHoursStr = (totalHoursStr: string): string => {
   return `${hrs}h ${mins.toString().padStart(2, '0')}m`;
 };
 
-// Helper to calculate productive hours (total duration minus break plus extra hours)
+// Helper to extract break allowance minutes from serialized total hours
+const getBreakAllowanceMinutes = (totalHoursStr: string): number => {
+  if (!totalHoursStr) return 0;
+  const parts = totalHoursStr.split('|');
+  if (parts.length < 5) return 0;
+  const allowance = parseInt(parts[4], 10);
+  return isNaN(allowance) ? 0 : allowance;
+};
+
+// Helper to calculate productive hours (total duration minus net break plus extra hours)
 const getProductiveHoursStr = (totalHoursStr: string): string => {
   if (!totalHoursStr || totalHoursStr === '--:--') return '0h 00m';
   const rawHoursStr = totalHoursStr.split('|')[0];
   const breakMins = getBreakMinutes(totalHoursStr);
+  const breakAllowance = getBreakAllowanceMinutes(totalHoursStr);
+  const netBreakMins = Math.max(0, breakMins - breakAllowance);
   const extraMins = getExtraHoursMinutes(totalHoursStr);
-  if (breakMins === 0 && extraMins === 0) return rawHoursStr;
+  if (netBreakMins === 0 && extraMins === 0) return rawHoursStr;
 
   try {
     const parts = rawHoursStr.match(/(\d+)h\s*(\d+)m/i);
@@ -108,7 +119,7 @@ const getProductiveHoursStr = (totalHoursStr: string): string => {
     const hours = parseInt(parts[1], 10);
     const minutes = parseInt(parts[2], 10);
     const totalMins = hours * 60 + minutes;
-    const productiveMins = Math.max(0, totalMins - breakMins + extraMins);
+    const productiveMins = Math.max(0, totalMins - netBreakMins + extraMins);
     const prodHours = Math.floor(productiveMins / 60);
     const prodMins = productiveMins % 60;
     return `${prodHours}h ${prodMins.toString().padStart(2, '0')}m`;
@@ -118,19 +129,21 @@ const getProductiveHoursStr = (totalHoursStr: string): string => {
   }
 };
 
-// Parse formatted total hours to decimal hours (taking break minutes and extra hours into account)
+// Parse formatted total hours to decimal hours (taking break minutes, allowance, and extra hours into account)
 const parseTotalHoursToDecimal = (totalHoursStr: string): number => {
   if (!totalHoursStr || totalHoursStr === '0h 00m' || totalHoursStr === '--:--') return 0;
   try {
     const rawHoursStr = totalHoursStr.split('|')[0];
     const breakMins = getBreakMinutes(totalHoursStr);
+    const breakAllowance = getBreakAllowanceMinutes(totalHoursStr);
+    const netBreakMins = Math.max(0, breakMins - breakAllowance);
     const extraMins = getExtraHoursMinutes(totalHoursStr);
     const parts = rawHoursStr.match(/(\d+)h\s*(\d+)m/i);
     if (!parts) return 0;
     const hours = parseInt(parts[1], 10);
     const minutes = parseInt(parts[2], 10);
     const totalMins = hours * 60 + minutes;
-    const productiveMins = Math.max(0, totalMins - breakMins + extraMins);
+    const productiveMins = Math.max(0, totalMins - netBreakMins + extraMins);
     return productiveMins / 60;
   } catch (err) {
     console.error(err);
@@ -1016,7 +1029,8 @@ export default function App() {
     const breakMins = getBreakMinutes(existingLog.totalHours);
     const existingRemark = getRemark(existingLog.totalHours);
     const existingExtraMins = getExtraHoursMinutes(existingLog.totalHours);
-    const updatedTotalHours = `${totalHours}|${breakMins}|${existingRemark}|${existingExtraMins}`;
+    const existingAllowance = getBreakAllowanceMinutes(existingLog.totalHours);
+    const updatedTotalHours = `${totalHours}|${breakMins}|${existingRemark}|${existingExtraMins}|${existingAllowance}`;
 
     try {
       const { error } = await supabase
@@ -1086,7 +1100,7 @@ export default function App() {
     };
 
     const dates = getDatesInRange(startDate, endDate);
-    let csvContent = 'Date,Employee ID,Employee Name,Role,Status,Clock In,Clock Out,Total Working Hours,Break Time (mins),Extra Working Hours,Productive Hours,Remark\n';
+    let csvContent = 'Date,Employee ID,Employee Name,Role,Status,Clock In,Clock Out,Total Working Hours,Break Time (mins),Extra Working Hours,Break Allowance (mins),Productive Hours,Remark\n';
 
     dates.forEach(dateObj => {
       const dateStr = formatDateString(dateObj);
@@ -1115,11 +1129,12 @@ export default function App() {
         const rawHours = totalHours.split('|')[0];
         const breakMins = getBreakMinutes(totalHours);
         const extraHoursStr = getExtraHoursStr(totalHours);
+        const breakAllowance = getBreakAllowanceMinutes(totalHours);
         const productiveHours = getProductiveHoursStr(totalHours);
         const remark = getRemark(totalHours);
         const escapedRemark = `"${remark.replace(/"/g, '""')}"`;
 
-        csvContent += `${dateStr},${emp.empId},${escapedName},${escapedRole},${status},${clockIn},${clockOut},${rawHours},${breakMins},${extraHoursStr},${productiveHours},${escapedRemark}\n`;
+        csvContent += `${dateStr},${emp.empId},${escapedName},${escapedRole},${status},${clockIn},${clockOut},${rawHours},${breakMins},${extraHoursStr},${breakAllowance},${productiveHours},${escapedRemark}\n`;
       });
     });
 
@@ -1171,7 +1186,7 @@ export default function App() {
     csvContent += `Employee ID,${employee.empId}\n`;
     csvContent += `Role,${employee.role}\n`;
     csvContent += `Email,${employee.email}\n\n`;
-    csvContent += 'Date,Status,Clock In,Clock Out,Total Working Hours,Break Time (mins),Extra Working Hours,Productive Hours,Remark,Minutes Late\n';
+    csvContent += 'Date,Status,Clock In,Clock Out,Total Working Hours,Break Time (mins),Extra Working Hours,Break Allowance (mins),Productive Hours,Remark,Minutes Late\n';
 
     dates.forEach(dateObj => {
       const dateStr = formatDateString(dateObj);
@@ -1199,11 +1214,12 @@ export default function App() {
       const rawHours = totalHours.split('|')[0];
       const breakMins = getBreakMinutes(totalHours);
       const extraHoursStr = getExtraHoursStr(totalHours);
+      const breakAllowance = getBreakAllowanceMinutes(totalHours);
       const productiveHours = getProductiveHoursStr(totalHours);
       const remark = getRemark(totalHours);
       const escapedRemark = `"${remark.replace(/"/g, '""')}"`;
 
-      csvContent += `${dateStr},${status},${clockIn},${clockOut},${rawHours},${breakMins},${extraHoursStr},${productiveHours},${escapedRemark},${minsLate}\n`;
+      csvContent += `${dateStr},${status},${clockIn},${clockOut},${rawHours},${breakMins},${extraHoursStr},${breakAllowance},${productiveHours},${escapedRemark},${minsLate}\n`;
     });
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -1288,6 +1304,7 @@ export default function App() {
       const rawHours = totalHours.split('|')[0];
       const breakMins = getBreakMinutes(totalHours);
       const extraHoursStr = getExtraHoursStr(totalHours);
+      const breakAllowance = getBreakAllowanceMinutes(totalHours);
       const productiveHours = getProductiveHoursStr(totalHours);
       const remark = getRemark(totalHours);
 
@@ -1300,6 +1317,7 @@ export default function App() {
           <td>${rawHours}</td>
           <td>${breakMins > 0 ? breakMins + ' mins' : '--'}</td>
           <td>${extraHoursStr === '0h 00m' ? '--' : extraHoursStr}</td>
+          <td>${breakAllowance > 0 ? breakAllowance + ' mins' : '--'}</td>
           <td><strong>${productiveHours}</strong></td>
           <td>${remark || '--'}</td>
           <td>${minsLate > 0 ? minsLate + ' mins' : '--'}</td>
@@ -1491,6 +1509,7 @@ export default function App() {
               <th>Total Hours</th>
               <th>Break</th>
               <th>Extra Hours</th>
+              <th>Break Allowance</th>
               <th>Productive Hours</th>
               <th>Remark</th>
               <th>Late Duration</th>
@@ -1585,6 +1604,7 @@ export default function App() {
         const rawHours = totalHours.split('|')[0];
         const breakMins = getBreakMinutes(totalHours);
         const extraHoursStr = getExtraHoursStr(totalHours);
+        const breakAllowance = getBreakAllowanceMinutes(totalHours);
         const productiveHours = getProductiveHoursStr(totalHours);
         const remark = getRemark(totalHours);
 
@@ -1600,6 +1620,7 @@ export default function App() {
             <td>${rawHours}</td>
             <td>${breakMins > 0 ? breakMins + ' mins' : '--'}</td>
             <td>${extraHoursStr === '0h 00m' ? '--' : extraHoursStr}</td>
+            <td>${breakAllowance > 0 ? breakAllowance + ' mins' : '--'}</td>
             <td><strong>${productiveHours}</strong></td>
             <td>${remark || '--'}</td>
           </tr>
@@ -1756,6 +1777,7 @@ export default function App() {
               <th>Total Hours</th>
               <th>Break</th>
               <th>Extra Hours</th>
+              <th>Break Allowance</th>
               <th>Productive Hours</th>
               <th>Remark</th>
             </tr>
@@ -1791,7 +1813,8 @@ export default function App() {
     const existingLog = attendanceLogs.find(l => l.id === logId);
     const breakMins = (existingLog && editStatus !== 'Absent') ? getBreakMinutes(existingLog.totalHours) : 0;
     const totalExtraMins = editStatus === 'Absent' ? 0 : (editExtraHoursHrs * 60 + editExtraHoursMins);
-    const updatedTotalHours = `${totalHours}|${breakMins}|${editStatus === 'Absent' ? '' : editRemark.trim()}|${totalExtraMins}`;
+    const existingAllowance = (existingLog && editStatus !== 'Absent') ? getBreakAllowanceMinutes(existingLog.totalHours) : 0;
+    const updatedTotalHours = `${totalHours}|${breakMins}|${editStatus === 'Absent' ? '' : editRemark.trim()}|${totalExtraMins}|${existingAllowance}`;
 
     let finalStatus = editStatus;
     if (finalStatus !== 'Absent' && inTimeStr !== '--:--') {
@@ -1832,7 +1855,8 @@ export default function App() {
     const rawHoursStr = existingLog.totalHours.split('|')[0];
     const existingRemark = getRemark(existingLog.totalHours);
     const existingExtraMins = getExtraHoursMinutes(existingLog.totalHours);
-    const updatedTotalHours = `${rawHoursStr}|${breakMins}|${existingRemark}|${existingExtraMins}`;
+    const existingAllowance = getBreakAllowanceMinutes(existingLog.totalHours);
+    const updatedTotalHours = `${rawHoursStr}|${breakMins}|${existingRemark}|${existingExtraMins}|${existingAllowance}`;
 
     try {
       const { error } = await supabase
@@ -1849,6 +1873,38 @@ export default function App() {
     } catch (err) {
       console.error(err);
       showToast('Failed to update break time.');
+    }
+  };
+
+  // Update break allowance minutes for an attendance record dynamically
+  const handleUpdateBreakAllowance = async (logId: string, allowanceMins: number) => {
+    const existingLog = attendanceLogs.find(l => l.id === logId);
+    if (!existingLog) {
+      showToast('Attendance log not found.');
+      return;
+    }
+
+    const rawHoursStr = existingLog.totalHours.split('|')[0];
+    const existingBreak = getBreakMinutes(existingLog.totalHours);
+    const existingRemark = getRemark(existingLog.totalHours);
+    const existingExtraMins = getExtraHoursMinutes(existingLog.totalHours);
+    const updatedTotalHours = `${rawHoursStr}|${existingBreak}|${existingRemark}|${existingExtraMins}|${allowanceMins}`;
+
+    try {
+      const { error } = await supabase
+        .from('attendance_logs')
+        .update({
+          total_hours: updatedTotalHours
+        })
+        .eq('id', logId);
+
+      if (error) throw error;
+
+      showToast('Break allowance updated.');
+      await fetchData();
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to update break allowance.');
     }
   };
 
@@ -3325,6 +3381,7 @@ export default function App() {
                             <th className="px-6 py-3">Working Hours</th>
                             <th className="px-6 py-3">Break</th>
                             <th className="px-6 py-3">Extra Hours</th>
+                            <th className="px-6 py-3">Break Allowance</th>
                             <th className="px-6 py-3">Productivity</th>
                             <th className="px-6 py-3">Remark</th>
                             <th className="px-6 py-3">Status</th>
@@ -3429,13 +3486,26 @@ export default function App() {
                                       )
                                     )}
                                   </td>
+                                  <td className="px-6 py-4">
+                                    <select
+                                      disabled={log.status === 'Absent' || isEditing}
+                                      value={getBreakAllowanceMinutes(log.totalHours)}
+                                      onChange={(e) => handleUpdateBreakAllowance(log.id, parseInt(e.target.value, 10))}
+                                      className="bg-surface-container-low border border-outline-variant rounded px-2 py-1 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-white"
+                                    >
+                                      <option value="0">0 mins</option>
+                                      <option value="15">15 mins</option>
+                                      <option value="45">45 mins</option>
+                                      <option value="60">60 mins</option>
+                                    </select>
+                                  </td>
                                   <td className="px-6 py-4 text-sm font-bold text-primary">
                                     {isEditing ? (
                                       getProductiveHoursStr(
                                         calculateDuration(
                                           editStatus === 'Absent' ? '--:--' : time24To12(editClockIn),
                                           editStatus === 'Absent' ? '--:--' : time24To12(editClockOut)
-                                        ) + `|${getBreakMinutes(log.totalHours)}|${editRemark.trim()}|${editExtraHoursHrs * 60 + editExtraHoursMins}`
+                                        ) + `|${getBreakMinutes(log.totalHours)}|${editRemark.trim()}|${editExtraHoursHrs * 60 + editExtraHoursMins}|${getBreakAllowanceMinutes(log.totalHours)}`
                                       )
                                     ) : (
                                       getProductiveHoursStr(log.totalHours)

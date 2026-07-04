@@ -207,33 +207,29 @@ export default function Sidebar({
               <span className="font-semibold text-sm">Completed Tasks</span>
             </button>
 
-            {role !== 'Team Leader' && (
-              <>
-                <button
-                  onClick={() => onTabChange('LeaveRequests')}
-                  className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-lg transition-all text-left group ${
-                    currentTab === 'LeaveRequests'
-                      ? 'text-primary bg-surface-container-high border-l-4 border-primary font-bold'
-                      : 'text-on-surface-variant hover:bg-surface-container-low hover:text-primary'
-                  }`}
-                >
-                  <FileText className={`w-5 h-5 ${currentTab === 'LeaveRequests' ? 'text-primary' : 'text-on-surface-variant group-hover:text-primary'}`} />
-                  <span className="font-semibold text-sm">Leave Requests</span>
-                </button>
+            <button
+              onClick={() => onTabChange('LeaveRequests')}
+              className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-lg transition-all text-left group ${
+                currentTab === 'LeaveRequests'
+                  ? 'text-primary bg-surface-container-high border-l-4 border-primary font-bold'
+                  : 'text-on-surface-variant hover:bg-surface-container-low hover:text-primary'
+              }`}
+            >
+              <FileText className={`w-5 h-5 ${currentTab === 'LeaveRequests' ? 'text-primary' : 'text-on-surface-variant group-hover:text-primary'}`} />
+              <span className="font-semibold text-sm">Leave Requests</span>
+            </button>
 
-                <button
-                  onClick={() => onTabChange('ApprovedLeaves')}
-                  className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-lg transition-all text-left group ${
-                    currentTab === 'ApprovedLeaves'
-                      ? 'text-primary bg-surface-container-high border-l-4 border-primary font-bold'
-                      : 'text-on-surface-variant hover:bg-surface-container-low hover:text-primary'
-                  }`}
-                >
-                  <Calendar className={`w-5 h-5 ${currentTab === 'ApprovedLeaves' ? 'text-primary' : 'text-on-surface-variant group-hover:text-primary'}`} />
-                  <span className="font-semibold text-sm">Approved Leaves</span>
-                </button>
-              </>
-            )}
+            <button
+              onClick={() => onTabChange('ApprovedLeaves')}
+              className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-lg transition-all text-left group ${
+                currentTab === 'ApprovedLeaves'
+                  ? 'text-primary bg-surface-container-high border-l-4 border-primary font-bold'
+                  : 'text-on-surface-variant hover:bg-surface-container-low hover:text-primary'
+              }`}
+            >
+              <Calendar className={`w-5 h-5 ${currentTab === 'ApprovedLeaves' ? 'text-primary' : 'text-on-surface-variant group-hover:text-primary'}`} />
+              <span className="font-semibold text-sm">Approved Leaves</span>
+            </button>
 
             <button
               onClick={() => onTabChange('EmpProfile')}

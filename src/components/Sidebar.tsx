@@ -11,7 +11,8 @@ import {
   Calendar,
   Settings,
   FileText,
-  Award
+  Award,
+  MessageSquare
 } from 'lucide-react';
 import { ViewTab } from '../types';
 
@@ -253,6 +254,18 @@ export default function Sidebar({
             >
               <Settings className={`w-5 h-5 ${currentTab === 'EmpSettings' ? 'text-primary' : 'text-on-surface-variant group-hover:text-primary'}`} />
               <span className="font-semibold text-sm">Settings</span>
+            </button>
+
+            <button
+              onClick={() => onTabChange('TeamChat')}
+              className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-lg transition-all text-left group ${
+                currentTab === 'TeamChat'
+                  ? 'text-primary bg-surface-container-high border-l-4 border-primary font-bold'
+                  : 'text-on-surface-variant hover:bg-surface-container-low hover:text-primary'
+              }`}
+            >
+              <MessageSquare className={`w-5 h-5 ${currentTab === 'TeamChat' ? 'text-primary' : 'text-on-surface-variant group-hover:text-primary'}`} />
+              <span className="font-semibold text-sm">Team Chat</span>
             </button>
           </>
         )}

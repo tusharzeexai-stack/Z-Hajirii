@@ -37,7 +37,8 @@ export type ViewTab =
   | 'EmpSettings'
   | 'TeamLeaderDashboard'
   | 'AdminTeamLeaders'
-  | 'AdminTLTasks';
+  | 'AdminTLTasks'
+  | 'TeamChat';
 
 export interface AttendanceStats {
   totalEmployees: number;
@@ -113,4 +114,12 @@ export interface AuditLogRecord {
   details: string;
   ipAddress?: string;
   createdAt?: string;
+}
+
+export interface ChatMessageRecord {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  message: string;
+  createdAt: string;
 }

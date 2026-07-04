@@ -265,6 +265,9 @@ export default function App() {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequestRecord[]>([]);
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogRecord[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessageRecord[]>([]);
+  const [activeChatUserId, setActiveChatUserId] = useState<string>('');
+  const [chatInputMessage, setChatInputMessage] = useState<string>('');
 
   // Task Form & Filter States
   const [taskSearchTerm, setTaskSearchTerm] = useState<string>('');
@@ -968,6 +971,65 @@ export default function App() {
     localStorage.setItem('zhajirii_tasks', JSON.stringify(filtered));
   };
 
+  const fetchChatMessages = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('chat_messages')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      const mapped: ChatMessageRecord[] = (data || []).map((m: any) => ({
+        id: m.id,
+        senderId: m.sender_id,
+        receiverId: m.receiver_id,
+        message: m.message,
+        createdAt: m.created_at
+      }));
+      setChatMessages(mapped);
+      localStorage.setItem('zhajirii_chat_messages', JSON.stringify(mapped));
+      return mapped;
+    } catch (err: any) {
+      console.warn('Supabase chat fetch failed, falling back to localStorage:', err.message);
+      const local = localStorage.getItem('zhajirii_chat_messages');
+      const parsed = local ? JSON.parse(local) : [];
+      setChatMessages(parsed);
+      return parsed;
+    }
+  };
+
+  const sendChatMessage = async (msg: string, receiverId: string) => {
+    if (!currentUser) return;
+    const newMsg: ChatMessageRecord = {
+      id: crypto.randomUUID(),
+      senderId: currentUser.id,
+      receiverId,
+      message: msg,
+      createdAt: new Date().toISOString()
+    };
+
+    const dbMsg = {
+      id: newMsg.id,
+      sender_id: newMsg.senderId,
+      receiver_id: newMsg.receiverId,
+      message: newMsg.message,
+      created_at: newMsg.createdAt
+    };
+
+    try {
+      const { error } = await supabase.from('chat_messages').insert(dbMsg);
+      if (error) throw error;
+    } catch (err: any) {
+      console.warn('Supabase chat send failed, updating locally:', err.message);
+    }
+
+    const currentMsgs = JSON.parse(localStorage.getItem('zhajirii_chat_messages') || '[]');
+    currentMsgs.push(newMsg);
+    localStorage.setItem('zhajirii_chat_messages', JSON.stringify(currentMsgs));
+    setChatMessages(currentMsgs);
+  };
+
   const fetchLeaveRequests = async () => {
     try {
       const { data, error } = await supabase.from('leave_requests').select('*').order('created_at', { ascending: false });
@@ -1370,6 +1432,7 @@ export default function App() {
       await fetchLeaveRequests();
       await fetchNotifications();
       await fetchAuditLogs();
+      await fetchChatMessages();
 
       // Seed if empty
       await checkAndSeedAdmin(fetchedUsers, mappedEmployees);
@@ -1438,6 +1501,15 @@ export default function App() {
       }
     }
   }, [currentUser, employees]);
+
+  // Chat messages polling loop (runs every 3 seconds)
+  useEffect(() => {
+    if (!currentUser) return;
+    const interval = setInterval(() => {
+      fetchChatMessages();
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [currentUser]);
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
@@ -5398,6 +5470,12 @@ export default function App() {
                       <div>
                         <h1 className="font-bold text-2xl tracking-tight">Welcome back, {currentUser.fullName}!</h1>
                         <p className="text-xs text-white/80 font-medium mt-1">{currentUser.designation} • {currentUser.department} Department</p>
+                        {currentUser.managerId && (
+                          <div className="inline-flex items-center gap-1.5 mt-2.5 px-3 py-1 rounded-full text-[10px] font-bold bg-white/20 text-white backdrop-blur-xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                            Assigned Team Leader: {users.find(u => u.id === currentUser.managerId)?.fullName || 'Pending'}
+                          </div>
+                        )}
                       </div>
                       <div className="flex flex-col items-end">
                         <span className="text-xs font-bold text-white/70">Current Session Details:</span>
@@ -6240,6 +6318,219 @@ export default function App() {
                           Update Account Password
                         </button>
                       </form>
+                    </div>
+                  </div>
+                )}
+
+                {/* 12. TEAM CHAT VIEW */}
+                {currentTab === 'TeamChat' && currentUser && (
+                  <div className="bg-white rounded-2xl border border-outline-variant/60 shadow-sm flex flex-col md:flex-row h-[calc(100vh-170px)] overflow-hidden animate-fade-in">
+                    {/* Chat Sidebar / Channels List */}
+                    <div className="w-full md:w-80 border-r border-outline-variant/40 flex flex-col bg-surface-container-low/10">
+                      <div className="p-4 border-b border-outline-variant/40 bg-gradient-to-r from-[#1b365d] to-[#0b2046] text-white">
+                        <h3 className="font-bold text-sm">Team Messages</h3>
+                        <p className="text-[10px] text-white/70">Connect with your team members</p>
+                      </div>
+
+                      {/* User List */}
+                      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                        {currentUser.role === 'Employee' ? (
+                          (() => {
+                            const tl = users.find(u => u.id === currentUser.managerId);
+                            if (!tl) {
+                              return (
+                                <div className="text-center p-4 text-xs text-on-surface-variant/70 font-medium">
+                                  No Team Leader assigned to you yet.
+                                </div>
+                              );
+                            }
+                            const isSelected = activeChatUserId === tl.id;
+                            const avatar = employees.find(e => e.id === tl.employeeId)?.avatarUrl;
+                            return (
+                              <button
+                                onClick={() => {
+                                  setActiveChatUserId(tl.id);
+                                  fetchChatMessages();
+                                }}
+                                className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left ${
+                                  isSelected
+                                    ? 'bg-primary/10 text-primary border border-primary/20 font-semibold'
+                                    : 'hover:bg-surface-container-low text-on-surface-variant'
+                                }`}
+                              >
+                                {avatar ? (
+                                  <img src={avatar} alt={tl.fullName} className="w-9 h-9 rounded-full object-cover border border-outline-variant" />
+                                ) : (
+                                  <div className="w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">
+                                    {tl.fullName.charAt(0)}
+                                  </div>
+                                )}
+                                <div className="truncate">
+                                  <p className="text-xs font-bold">{tl.fullName}</p>
+                                  <p className="text-[9px] text-on-surface-variant/70 uppercase font-bold">Team Leader</p>
+                                </div>
+                              </button>
+                            );
+                          })()
+                        ) : currentUser.role === 'Team Leader' ? (
+                          (() => {
+                            const myInterns = users.filter(u => u.managerId === currentUser.id);
+                            if (myInterns.length === 0) {
+                              return (
+                                <div className="text-center p-4 text-xs text-on-surface-variant/70 font-medium">
+                                  No interns assigned to you yet.
+                                </div>
+                              );
+                            }
+                            return myInterns.map(intern => {
+                              const isSelected = activeChatUserId === intern.id;
+                              const avatar = employees.find(e => e.id === intern.employeeId)?.avatarUrl;
+                              return (
+                                <button
+                                  key={intern.id}
+                                  onClick={() => {
+                                    setActiveChatUserId(intern.id);
+                                    fetchChatMessages();
+                                  }}
+                                  className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left ${
+                                    isSelected
+                                      ? 'bg-primary/10 text-primary border border-primary/20 font-semibold'
+                                      : 'hover:bg-surface-container-low text-on-surface-variant'
+                                  }`}
+                                >
+                                  {avatar ? (
+                                    <img src={avatar} alt={intern.fullName} className="w-9 h-9 rounded-full object-cover border border-outline-variant" />
+                                  ) : (
+                                    <div className="w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">
+                                      {intern.fullName.charAt(0)}
+                                    </div>
+                                  )}
+                                  <div className="truncate">
+                                    <p className="text-xs font-bold">{intern.fullName}</p>
+                                    <p className="text-[9px] text-on-surface-variant/70 font-semibold">@{intern.username}</p>
+                                  </div>
+                                </button>
+                              );
+                            });
+                          })()
+                        ) : (
+                          <div className="text-center p-4 text-xs text-on-surface-variant/70 font-medium">
+                            Admin check: Go to User Management to assign Team Leaders.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Chat Messages Container */}
+                    <div className="flex-1 flex flex-col bg-surface-container-lowest">
+                      {activeChatUserId ? (
+                        (() => {
+                          const activeChatUser = users.find(u => u.id === activeChatUserId);
+                          const activeChatUserAvatar = activeChatUser
+                            ? employees.find(e => e.id === activeChatUser.employeeId)?.avatarUrl
+                            : undefined;
+
+                          const filteredMsgs = chatMessages.filter(
+                            m =>
+                              (m.senderId === currentUser.id && m.receiverId === activeChatUserId) ||
+                              (m.senderId === activeChatUserId && m.receiverId === currentUser.id)
+                          );
+
+                          const handleSendSubmit = (e: FormEvent) => {
+                            e.preventDefault();
+                            if (!chatInputMessage.trim()) return;
+                            sendChatMessage(chatInputMessage.trim(), activeChatUserId);
+                            setChatInputMessage('');
+                          };
+
+                          return (
+                            <>
+                              {/* Header */}
+                              <div className="p-4 border-b border-outline-variant/40 flex items-center gap-3 bg-white">
+                                {activeChatUserAvatar ? (
+                                  <img src={activeChatUserAvatar} alt={activeChatUser?.fullName} className="w-8 h-8 rounded-full object-cover" />
+                                ) : (
+                                  <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">
+                                    {activeChatUser?.fullName.charAt(0)}
+                                  </div>
+                                )}
+                                <div>
+                                  <h4 className="font-bold text-xs text-primary">{activeChatUser?.fullName}</h4>
+                                  <span className="inline-flex items-center gap-1 text-[9px] text-emerald-500 font-bold">
+                                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                                    Active Channel
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Messages Feed */}
+                              <div className="flex-1 overflow-y-auto p-4 space-y-3 flex flex-col">
+                                {filteredMsgs.length === 0 ? (
+                                  <div className="flex-1 flex flex-col items-center justify-center text-center p-6 space-y-2 opacity-70">
+                                    <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+                                      <MessageSquare className="w-6 h-6" />
+                                    </div>
+                                    <h4 className="text-xs font-bold text-primary">No Messages Yet</h4>
+                                    <p className="text-[10px] text-on-surface-variant max-w-[200px]">Send a greeting message to start the conversation.</p>
+                                  </div>
+                                ) : (
+                                  filteredMsgs.map(msg => {
+                                    const isMe = msg.senderId === currentUser.id;
+                                    return (
+                                      <div
+                                        key={msg.id}
+                                        className={`flex flex-col max-w-[75%] ${isMe ? 'self-end items-end' : 'self-start items-start'}`}
+                                      >
+                                        <div
+                                          className={`p-3 rounded-2xl text-xs font-semibold shadow-xs ${
+                                            isMe
+                                              ? 'bg-primary text-on-primary rounded-tr-none'
+                                              : 'bg-white text-on-surface border border-outline-variant/40 rounded-tl-none'
+                                          }`}
+                                        >
+                                          {msg.message}
+                                        </div>
+                                        <span className="text-[9px] text-on-surface-variant/60 font-semibold mt-1 px-1">
+                                          {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                      </div>
+                                    );
+                                  })
+                                )}
+                              </div>
+
+                              {/* Chat Input */}
+                              <form onSubmit={handleSendSubmit} className="p-4 bg-white border-t border-outline-variant/40 flex gap-2">
+                                <input
+                                  type="text"
+                                  value={chatInputMessage}
+                                  onChange={(e) => setChatInputMessage(e.target.value)}
+                                  placeholder="Type your message here..."
+                                  className="flex-1 bg-surface-container-low border border-outline-variant/60 rounded-xl px-4 py-2.5 text-xs text-on-surface focus:outline-none focus:border-primary/60 font-medium"
+                                />
+                                <button
+                                  type="submit"
+                                  className="bg-primary hover:bg-primary/90 text-on-primary px-4 py-2 rounded-xl text-xs font-bold shadow-sm transition-all active:scale-95 cursor-pointer"
+                                >
+                                  Send
+                                </button>
+                              </form>
+                            </>
+                          );
+                        })()
+                      ) : (
+                        <div className="flex-1 flex flex-col items-center justify-center text-center p-6 space-y-3 opacity-85">
+                          <div className="w-16 h-16 rounded-full bg-primary/10 text-primary flex items-center justify-center animate-bounce">
+                            <MessageSquare className="w-8 h-8" />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-sm text-primary">Your Workspace Chat</h3>
+                            <p className="text-[10px] text-on-surface-variant max-w-[280px] mt-1 font-medium">
+                              Select a contact from the left list to begin messaging.
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

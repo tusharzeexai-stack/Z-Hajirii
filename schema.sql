@@ -187,3 +187,23 @@ CREATE POLICY "Allow public select on audit_logs" ON audit_logs FOR SELECT USING
 CREATE POLICY "Allow public insert on audit_logs" ON audit_logs FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow public update on audit_logs" ON audit_logs FOR UPDATE USING (true);
 CREATE POLICY "Allow public delete on audit_logs" ON audit_logs FOR DELETE USING (true);
+
+-- 9. Create Chat Messages table
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id TEXT PRIMARY KEY,
+    sender_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    receiver_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public select on chat_messages" ON chat_messages;
+DROP POLICY IF EXISTS "Allow public insert on chat_messages" ON chat_messages;
+DROP POLICY IF EXISTS "Allow public update on chat_messages" ON chat_messages;
+DROP POLICY IF EXISTS "Allow public delete on chat_messages" ON chat_messages;
+
+CREATE POLICY "Allow public select on chat_messages" ON chat_messages FOR SELECT USING (true);
+CREATE POLICY "Allow public insert on chat_messages" ON chat_messages FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update on chat_messages" ON chat_messages FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete on chat_messages" ON chat_messages FOR DELETE USING (true);

@@ -24,9 +24,31 @@ import {
   ChevronRight,
   UserPlus,
   LogOut,
-  Calendar
+  Calendar,
+  Settings,
+  ListTodo,
+  CheckSquare,
+  Paperclip,
+  CheckCircle,
+  XCircle,
+  Shield,
+  Phone,
+  Bookmark,
+  CalendarClock,
+  Award
 } from 'lucide-react';
-import { Employee, AttendanceRecord, ViewTab } from './types';
+import bcrypt from 'bcryptjs';
+
+import {
+  Employee,
+  AttendanceRecord,
+  ViewTab,
+  UserRecord,
+  TaskRecord,
+  LeaveRequestRecord,
+  NotificationRecord,
+  AuditLogRecord
+} from './types';
 import { INITIAL_EMPLOYEES, INITIAL_ATTENDANCE_LOGS } from './data';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -187,10 +209,10 @@ const calculateMinutesLate = (clockInStr: string): number => {
   const modifier = parts[3].toUpperCase();
   if (modifier === 'PM' && hours < 12) hours += 12;
   if (modifier === 'AM' && hours === 12) hours = 0;
-  
+
   const totalMins = hours * 60 + minutes;
   const targetMins = 12 * 60; // 12:00 PM is 720 minutes
-  
+
   if (totalMins > targetMins) {
     return totalMins - targetMins;
   }
@@ -211,19 +233,6 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
-const AVAILABLE_ROLES = [
-  'Software Engineer',
-  'AI Engineer',
-  'System Architect',
-  'Senior Operations Manager',
-  'Operations Lead',
-  'HR Manager',
-  'Administrator',
-  'Payroll Lead',
-  'Benefits Coordinator',
-  'Talent Acquisition'
-];
-
 export default function App() {
   const todayDateString = useMemo(() => {
     return new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -233,21 +242,75 @@ export default function App() {
     return new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   }, []);
 
-  // Authentication State
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false); // Ask login credential first
+  // Authentication & Session State
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [username, setUsername] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string>('');
   const [rememberMe, setRememberMe] = useState<boolean>(true);
+  const [currentUser, setCurrentUser] = useState<UserRecord | null>(null);
 
   // Core Management State
   const [currentTab, setCurrentTab] = useState<ViewTab>('Dashboard');
-  const [employees, setEmployees] = useState<Employee[]>(INITIAL_EMPLOYEES);
-  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceRecord[]>(INITIAL_ATTENDANCE_LOGS);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceRecord[]>([]);
   const [selectedEmployeeForProfile, setSelectedEmployeeForProfile] = useState<Employee | null>(null);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+
+  // New RBAC States
+  const [users, setUsers] = useState<UserRecord[]>([]);
+  const [tasks, setTasks] = useState<TaskRecord[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequestRecord[]>([]);
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogRecord[]>([]);
+
+  // Task Form & Filter States
+  const [taskSearchTerm, setTaskSearchTerm] = useState<string>('');
+  const [taskPriorityFilter, setTaskPriorityFilter] = useState<string>('All');
+  const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState<boolean>(false);
+  const [newTaskTitle, setNewTaskTitle] = useState<string>('');
+  const [newTaskDesc, setNewTaskDesc] = useState<string>('');
+  const [newTaskPriority, setNewTaskPriority] = useState<'Low' | 'Medium' | 'High'>('Medium');
+  const [newTaskDeadline, setNewTaskDeadline] = useState<string>('');
+  const [newTaskAssigneeId, setNewTaskAssigneeId] = useState<string>('');
+  const [newTaskAttachment, setNewTaskAttachment] = useState<string>('');
+
+  // Leave Form & Admin Action States
+  const [leaveType, setLeaveType] = useState<'Casual' | 'Sick' | 'Emergency' | 'Work From Home'>('Casual');
+  const [leaveFromDate, setLeaveFromDate] = useState<string>('');
+  const [leaveToDate, setLeaveToDate] = useState<string>('');
+  const [leaveReason, setLeaveReason] = useState<string>('');
+  const [leaveDesc, setLeaveDesc] = useState<string>('');
+  const [leaveAttachment, setLeaveAttachment] = useState<string>('');
+
+  const [isAdminLeaveCommentModalOpen, setIsAdminLeaveCommentModalOpen] = useState<boolean>(false);
+  const [selectedLeaveForAdminAction, setSelectedLeaveForAdminAction] = useState<LeaveRequestRecord | null>(null);
+  const [adminLeaveActionType, setAdminLeaveActionType] = useState<'Approved' | 'Rejected'>('Approved');
+  const [adminLeaveComment, setAdminLeaveComment] = useState<string>('');
+
+  // User CRUD Form States
+  const [isUserModalOpen, setIsUserModalOpen] = useState<boolean>(false);
+  const [editingUser, setEditingUser] = useState<UserRecord | null>(null);
+  const [userFormFullName, setUserFormFullName] = useState<string>('');
+  const [userFormUsername, setUserFormUsername] = useState<string>('');
+  const [userFormEmail, setUserFormEmail] = useState<string>('');
+  const [userFormPhone, setUserFormPhone] = useState<string>('');
+  const [userFormDesignation, setUserFormDesignation] = useState<string>('');
+  const [userFormDepartment, setUserFormDepartment] = useState<string>('');
+  const [userFormJoiningDate, setUserFormJoiningDate] = useState<string>('');
+  const [userFormRole, setUserFormRole] = useState<'Employee' | 'Admin' | 'Team Leader'>('Employee');
+  const [userFormStatus, setUserFormStatus] = useState<'Active' | 'Disabled'>('Active');
+  const [userFormPassword, setUserFormPassword] = useState<string>('');
+  const [userFormEmployeeId, setUserFormEmployeeId] = useState<string>('');
+  const [userFormInternType, setUserFormInternType] = useState<'Online Intern' | 'Offline Intern'>('Online Intern');
+  const [userFormManagerId, setUserFormManagerId] = useState<string>('');
+
+  // Password Change Form State
+  const [settingsOldPass, setSettingsOldPass] = useState<string>('');
+  const [settingsNewPass, setSettingsNewPass] = useState<string>('');
+  const [settingsConfirmPass, setSettingsConfirmPass] = useState<string>('');
 
   // Attendance Log Edit State
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
@@ -290,10 +353,10 @@ export default function App() {
     const current = new Date();
     const currentDay = current.getDay();
     const distanceToMonday = currentDay === 0 ? -6 : 1 - currentDay;
-    
+
     const monday = new Date(current);
     monday.setDate(current.getDate() + distanceToMonday);
-    
+
     const dates: Date[] = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(monday);
@@ -311,7 +374,7 @@ export default function App() {
     return currentWeekDates.map((dateObj, index) => {
       const dateStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       const isFuture = dateObj.getTime() > new Date().setHours(23, 59, 59, 999);
-      
+
       const isToday = dateObj.getDate() === today.getDate() &&
                       dateObj.getMonth() === today.getMonth() &&
                       dateObj.getFullYear() === today.getFullYear();
@@ -339,7 +402,7 @@ export default function App() {
         dateMidnight.setHours(0, 0, 0, 0);
         const createdMidnight = new Date(createdDate);
         createdMidnight.setHours(0, 0, 0, 0);
-        
+
         if (dateMidnight.getTime() < createdMidnight.getTime()) {
           return {
             label: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][index],
@@ -358,10 +421,10 @@ export default function App() {
       }
 
       const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
-      
+
       // Find log for the selected employee on this date
       const log = attendanceLogs.find(l => l.employeeId === selectedEmployeeForProfile.id && l.date === dateStr);
-      
+
       // If weekend and no log recorded, don't count absent
       if (isWeekend && !log) {
         return {
@@ -441,7 +504,7 @@ export default function App() {
   // Monthly attendance data calculated from live logs of the SELECTED employee
   const monthlyData = useMemo(() => {
     if (!selectedEmployeeForProfile) return [];
-    
+
     const currentYear = new Date().getFullYear().toString();
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const currentMonthIdx = new Date().getMonth();
@@ -718,14 +781,6 @@ export default function App() {
     });
   }, [employees, attendanceLogs, selectedAttendanceDate, attendanceStatusFilter, searchTerm]);
 
-  // New Employee Modal State
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
-  const [newEmpName, setNewEmpName] = useState<string>('');
-  const [selectedRoles, setSelectedRoles] = useState<string[]>(['Software Engineer']);
-  const [newEmpEmail, setNewEmpEmail] = useState<string>('');
-  const [newEmpId, setNewEmpId] = useState<string>('');
-  const [newEmpAvatar, setNewEmpAvatar] = useState<string>('');
-
   // Export Modal State
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
   const [isProfileExportModalOpen, setIsProfileExportModalOpen] = useState<boolean>(false);
@@ -755,19 +810,528 @@ export default function App() {
     }, 3000);
   };
 
-  // Fetch employees and attendance logs from Supabase
+  // DB Sync helper with robust LocalStorage Fallbacks
+  const fetchUsers = async () => {
+    try {
+      const { data, error } = await supabase.from('users').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      const mapped: UserRecord[] = (data || []).map(u => ({
+        id: u.id,
+        username: u.username,
+        passwordHash: u.password_hash,
+        fullName: u.full_name,
+        email: u.email,
+        employeeId: u.employee_id,
+        department: u.department,
+        designation: u.designation,
+        phoneNumber: u.phone_number || '',
+        joiningDate: u.joining_date || '',
+        role: u.role,
+        status: u.status,
+        internType: u.intern_type || 'Online Intern',
+        managerId: u.manager_id || null,
+        createdAt: u.created_at,
+        updatedAt: u.updated_at
+      }));
+      setUsers(mapped);
+      localStorage.setItem('zhajirii_users', JSON.stringify(mapped));
+      return mapped;
+    } catch (err: any) {
+      console.warn('Supabase users fetch failed, falling back to localStorage:', err.message);
+      const local = localStorage.getItem('zhajirii_users');
+      const parsed = local ? JSON.parse(local) : [];
+      setUsers(parsed);
+      return parsed;
+    }
+  };
+
+  const saveUser = async (user: UserRecord) => {
+    const dbUser = {
+      id: user.id,
+      username: user.username,
+      password_hash: user.passwordHash,
+      full_name: user.fullName,
+      email: user.email,
+      employee_id: user.employeeId,
+      department: user.department,
+      designation: user.designation,
+      phone_number: user.phoneNumber || '',
+      joining_date: user.joiningDate || '',
+      role: user.role,
+      status: user.status,
+      intern_type: user.internType || 'Online Intern',
+      manager_id: user.managerId || null
+    };
+
+    try {
+      const { error } = await supabase.from('users').upsert(dbUser);
+      if (error) throw error;
+    } catch (err: any) {
+      console.warn('Supabase user save failed, writing locally:', err.message);
+    }
+
+    const currentUsers = JSON.parse(localStorage.getItem('zhajirii_users') || '[]');
+    const index = currentUsers.findIndex((u: any) => u.id === user.id);
+    if (index >= 0) {
+      currentUsers[index] = user;
+    } else {
+      currentUsers.push(user);
+    }
+    setUsers(currentUsers);
+    localStorage.setItem('zhajirii_users', JSON.stringify(currentUsers));
+  };
+
+  const deleteUser = async (id: string) => {
+    try {
+      const { error } = await supabase.from('users').delete().eq('id', id);
+      if (error) throw error;
+    } catch (err: any) {
+      console.warn('Supabase user delete failed, updating local state:', err.message);
+    }
+
+    const currentUsers = JSON.parse(localStorage.getItem('zhajirii_users') || '[]');
+    const filtered = currentUsers.filter((u: any) => u.id !== id);
+    setUsers(filtered);
+    localStorage.setItem('zhajirii_users', JSON.stringify(filtered));
+  };
+
+  const fetchTasks = async () => {
+    try {
+      const { data, error } = await supabase.from('tasks').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      const mapped: TaskRecord[] = (data || []).map(t => ({
+        id: t.id,
+        userId: t.user_id,
+        title: t.title,
+        description: t.description || '',
+        priority: t.priority,
+        deadline: t.deadline,
+        status: t.status,
+        attachment: t.attachment || '',
+        completedAt: t.completed_at,
+        createdAt: t.created_at
+      }));
+      setTasks(mapped);
+      localStorage.setItem('zhajirii_tasks', JSON.stringify(mapped));
+      return mapped;
+    } catch (err: any) {
+      console.warn('Supabase tasks fetch failed, falling back to localStorage:', err.message);
+      const local = localStorage.getItem('zhajirii_tasks');
+      const parsed = local ? JSON.parse(local) : [];
+      setTasks(parsed);
+      return parsed;
+    }
+  };
+
+  const saveTask = async (task: TaskRecord) => {
+    const dbTask = {
+      id: task.id,
+      user_id: task.userId,
+      title: task.title,
+      description: task.description,
+      priority: task.priority,
+      deadline: task.deadline,
+      status: task.status,
+      attachment: task.attachment || '',
+      completed_at: task.completedAt || null
+    };
+
+    try {
+      const { error } = await supabase.from('tasks').upsert(dbTask);
+      if (error) throw error;
+    } catch (err: any) {
+      console.warn('Supabase task save failed, updating locally:', err.message);
+    }
+
+    const currentTasks = JSON.parse(localStorage.getItem('zhajirii_tasks') || '[]');
+    const index = currentTasks.findIndex((t: any) => t.id === task.id);
+    if (index >= 0) {
+      currentTasks[index] = task;
+    } else {
+      currentTasks.push(task);
+    }
+    setTasks(currentTasks);
+    localStorage.setItem('zhajirii_tasks', JSON.stringify(currentTasks));
+  };
+
+  const deleteTask = async (id: string) => {
+    try {
+      const { error } = await supabase.from('tasks').delete().eq('id', id);
+      if (error) throw error;
+    } catch (err: any) {
+      console.warn('Supabase task delete failed, updating locally:', err.message);
+    }
+
+    const currentTasks = JSON.parse(localStorage.getItem('zhajirii_tasks') || '[]');
+    const filtered = currentTasks.filter((t: any) => t.id !== id);
+    setTasks(filtered);
+    localStorage.setItem('zhajirii_tasks', JSON.stringify(filtered));
+  };
+
+  const fetchLeaveRequests = async () => {
+    try {
+      const { data, error } = await supabase.from('leave_requests').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      const mapped: LeaveRequestRecord[] = (data || []).map(l => ({
+        id: l.id,
+        userId: l.user_id,
+        leaveType: l.leave_type,
+        fromDate: l.from_date,
+        toDate: l.to_date,
+        totalDays: l.total_days,
+        reason: l.reason,
+        description: l.description || '',
+        attachment: l.attachment || '',
+        status: l.status,
+        adminComment: l.admin_comment || '',
+        approvedBy: l.approved_by || null,
+        approvedAt: l.approved_at || undefined,
+        createdAt: l.created_at
+      }));
+      setLeaveRequests(mapped);
+      localStorage.setItem('zhajirii_leaves', JSON.stringify(mapped));
+      return mapped;
+    } catch (err: any) {
+      console.warn('Supabase leaves fetch failed, falling back to localStorage:', err.message);
+      const local = localStorage.getItem('zhajirii_leaves');
+      const parsed = local ? JSON.parse(local) : [];
+      setLeaveRequests(parsed);
+      return parsed;
+    }
+  };
+
+  const saveLeaveRequest = async (leave: LeaveRequestRecord) => {
+    const dbLeave = {
+      id: leave.id,
+      user_id: leave.userId,
+      leave_type: leave.leaveType,
+      from_date: leave.fromDate,
+      to_date: leave.toDate,
+      total_days: leave.totalDays,
+      reason: leave.reason,
+      description: leave.description || '',
+      attachment: leave.attachment || '',
+      status: leave.status,
+      admin_comment: leave.adminComment || '',
+      approved_by: leave.approvedBy || null,
+      approved_at: leave.approvedAt || null
+    };
+
+    try {
+      const { error } = await supabase.from('leave_requests').upsert(dbLeave);
+      if (error) throw error;
+    } catch (err: any) {
+      console.warn('Supabase leave request save failed, updating locally:', err.message);
+    }
+
+    const currentLeaves = JSON.parse(localStorage.getItem('zhajirii_leaves') || '[]');
+    const index = currentLeaves.findIndex((l: any) => l.id === leave.id);
+    if (index >= 0) {
+      currentLeaves[index] = leave;
+    } else {
+      currentLeaves.push(leave);
+    }
+    setLeaveRequests(currentLeaves);
+    localStorage.setItem('zhajirii_leaves', JSON.stringify(currentLeaves));
+  };
+
+  const deleteLeaveRequest = async (id: string) => {
+    try {
+      const { error } = await supabase.from('leave_requests').delete().eq('id', id);
+      if (error) throw error;
+    } catch (err: any) {
+      console.warn('Supabase leave request delete failed, updating locally:', err.message);
+    }
+
+    const currentLeaves = JSON.parse(localStorage.getItem('zhajirii_leaves') || '[]');
+    const filtered = currentLeaves.filter((l: any) => l.id !== id);
+    setLeaveRequests(filtered);
+    localStorage.setItem('zhajirii_leaves', JSON.stringify(filtered));
+  };
+
+  const fetchNotifications = async () => {
+    try {
+      const { data, error } = await supabase.from('notifications').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      const mapped: NotificationRecord[] = (data || []).map(n => ({
+        id: n.id,
+        userId: n.user_id,
+        title: n.title,
+        message: n.message,
+        type: n.type,
+        isRead: n.is_read,
+        createdAt: n.created_at
+      }));
+      setNotifications(mapped);
+      localStorage.setItem('zhajirii_notifications', JSON.stringify(mapped));
+      return mapped;
+    } catch (err: any) {
+      console.warn('Supabase notifications fetch failed, falling back to localStorage:', err.message);
+      const local = localStorage.getItem('zhajirii_notifications');
+      const parsed = local ? JSON.parse(local) : [];
+      setNotifications(parsed);
+      return parsed;
+    }
+  };
+
+  const createNotification = async (userId: string, title: string, message: string, type: 'Task' | 'Leave' | 'System') => {
+    const notif: NotificationRecord = {
+      id: `notif-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      userId,
+      title,
+      message,
+      type,
+      isRead: false,
+      createdAt: new Date().toISOString()
+    };
+
+    const dbNotif = {
+      id: notif.id,
+      user_id: notif.userId,
+      title: notif.title,
+      message: notif.message,
+      type: notif.type,
+      is_read: notif.isRead
+    };
+
+    try {
+      const { error } = await supabase.from('notifications').insert(dbNotif);
+      if (error) throw error;
+    } catch (err: any) {
+      console.warn('Supabase notification insert failed, storing locally:', err.message);
+    }
+
+    const currentNotifs = JSON.parse(localStorage.getItem('zhajirii_notifications') || '[]');
+    currentNotifs.unshift(notif);
+    setNotifications(currentNotifs);
+    localStorage.setItem('zhajirii_notifications', JSON.stringify(currentNotifs));
+
+    if (currentUser && currentUser.id === userId) {
+      showToast(`${title}: ${message}`);
+    }
+  };
+
+  const handleMarkNotificationRead = async (id: string) => {
+    try {
+      const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+      if (error) throw error;
+    } catch (err: any) {
+      console.warn('Supabase notification update failed:', err.message);
+    }
+
+    const currentNotifs = [...notifications];
+    const idx = currentNotifs.findIndex(n => n.id === id);
+    if (idx >= 0) {
+      currentNotifs[idx].isRead = true;
+      setNotifications(currentNotifs);
+      localStorage.setItem('zhajirii_notifications', JSON.stringify(currentNotifs));
+    }
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    if (!currentUser) return;
+    try {
+      const { error } = await supabase.from('notifications').update({ is_read: true }).eq('user_id', currentUser.id);
+      if (error) throw error;
+    } catch (err: any) {
+      console.warn('Supabase mark all read failed:', err.message);
+    }
+
+    const updated = notifications.map(n => ({ ...n, isRead: true }));
+    setNotifications(updated);
+    localStorage.setItem('zhajirii_notifications', JSON.stringify(updated));
+    showToast('All notifications marked as read.');
+  };
+
+  const handleClearNotifications = async () => {
+    if (!currentUser) return;
+    try {
+      const { error } = await supabase.from('notifications').delete().eq('user_id', currentUser.id);
+      if (error) throw error;
+    } catch (err: any) {
+      console.warn('Supabase clear notifications failed:', err.message);
+    }
+
+    setNotifications([]);
+    localStorage.setItem('zhajirii_notifications', JSON.stringify([]));
+    showToast('All notifications cleared.');
+  };
+
+  const fetchAuditLogs = async () => {
+    try {
+      const { data, error } = await supabase.from('audit_logs').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      const mapped: AuditLogRecord[] = (data || []).map(a => ({
+        id: a.id,
+        userId: a.user_id,
+        username: a.username || '',
+        action: a.action,
+        details: a.details,
+        ipAddress: a.ip_address || '',
+        createdAt: a.created_at
+      }));
+      setAuditLogs(mapped);
+      localStorage.setItem('zhajirii_audit_logs', JSON.stringify(mapped));
+      return mapped;
+    } catch (err: any) {
+      console.warn('Supabase audit logs fetch failed, loading locally:', err.message);
+      const local = localStorage.getItem('zhajirii_audit_logs');
+      const parsed = local ? JSON.parse(local) : [];
+      setAuditLogs(parsed);
+      return parsed;
+    }
+  };
+
+  const createAuditLog = async (userId: string | null, userStr: string, action: string, details: string) => {
+    const log: AuditLogRecord = {
+      id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      userId,
+      username: userStr,
+      action,
+      details,
+      createdAt: new Date().toISOString()
+    };
+
+    const dbLog = {
+      id: log.id,
+      user_id: log.userId,
+      username: log.username,
+      action: log.action,
+      details: log.details
+    };
+
+    try {
+      const { error } = await supabase.from('audit_logs').insert(dbLog);
+      if (error) throw error;
+    } catch (err: any) {
+      console.warn('Supabase audit log insert failed:', err.message);
+    }
+
+    const currentLogs = JSON.parse(localStorage.getItem('zhajirii_audit_logs') || '[]');
+    currentLogs.unshift(log);
+    setAuditLogs(currentLogs);
+    localStorage.setItem('zhajirii_audit_logs', JSON.stringify(currentLogs));
+  };
+
+  // Seed default Admin user if users table is empty
+  const checkAndSeedAdmin = async (currentUsers: UserRecord[], currentEmployees: Employee[]) => {
+    if (currentUsers.length === 0) {
+      console.log('No users found. Seeding default Admin user...');
+      const defaultAdmin: UserRecord = {
+        id: 'usr-admin',
+        username: 'Z-Hajirii',
+        passwordHash: bcrypt.hashSync('Admin@Hajirii', 10),
+        fullName: 'Admin User',
+        email: 'admin@zhajirii.com',
+        employeeId: 'emp-admin',
+        department: 'Management',
+        designation: 'System Manager',
+        phoneNumber: '123-456-7890',
+        joiningDate: '2026-01-01',
+        role: 'Admin',
+        status: 'Active',
+        internType: 'Online Intern'
+      };
+
+      const dbEmp = {
+        id: 'emp-admin',
+        name: 'Admin User',
+        role: 'System Manager',
+        email: 'admin@zhajirii.com',
+        avatar_url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150',
+        emp_id: 'EMP-ADMIN',
+        active_now: true
+      };
+
+      try {
+        await supabase.from('employees').upsert(dbEmp);
+      } catch (e) {
+        console.warn('Could not seed admin employee to Supabase:', e);
+      }
+
+      await saveUser(defaultAdmin);
+      await createNotification(
+        'usr-admin',
+        'Welcome to Z-Hajirii',
+        'Your administrative account has been successfully initialized.',
+        'System'
+      );
+      await createAuditLog('usr-admin', 'Z-Hajirii', 'System Initialization', 'Seeded default administrator account.');
+    }
+
+    // Clean up/prune mock users from database and local storage if present
+    try {
+      await supabase.from('users').delete().in('id', ['usr-online', 'usr-offline', 'usr-manager']);
+      await supabase.from('employees').delete().in('id', ['emp-online', 'emp-offline', 'emp-manager']);
+    } catch (e) {
+      console.warn('Could not prune mock users from database:', e);
+    }
+
+    const localUsersStr = localStorage.getItem('zhajirii_users');
+    if (localUsersStr) {
+      const localUsers = JSON.parse(localUsersStr);
+      const filtered = localUsers.filter((u: any) => u.id !== 'usr-online' && u.id !== 'usr-offline' && u.id !== 'usr-manager');
+      if (filtered.length !== localUsers.length) {
+        localStorage.setItem('zhajirii_users', JSON.stringify(filtered));
+      }
+    }
+
+    // Auto-create user records for any employees who don't have a linked user account yet.
+    // Default them to Offline Interns so the admin can edit them.
+    let seededNewUsers = false;
+    for (const emp of currentEmployees) {
+      const userExists = currentUsers.some(u => u.employeeId === emp.id);
+      if (!userExists) {
+        console.log(`Auto-seeding user account for employee ${emp.name}`);
+        const usernameBase = emp.name.toLowerCase().trim().replace(/\s+/g, '_');
+        const defaultUser: UserRecord = {
+          id: `usr-${emp.id}`,
+          username: usernameBase,
+          passwordHash: bcrypt.hashSync('Pass@123', 10),
+          fullName: emp.name,
+          email: emp.email || `${usernameBase}@company.com`,
+          employeeId: emp.id,
+          department: 'Engineering',
+          designation: emp.role || 'Offline Intern',
+          phoneNumber: '',
+          joiningDate: new Date().toISOString().split('T')[0],
+          role: 'Employee',
+          status: 'Active',
+          internType: 'Offline Intern'
+        };
+        try {
+          await saveUser(defaultUser);
+          await createNotification(
+            defaultUser.id,
+            'Profile Created',
+            `Your account has been seeded. Username: ${defaultUser.username}, Password: Pass@123`,
+            'System'
+          );
+          seededNewUsers = true;
+        } catch (e) {
+          console.warn(`Could not seed user account for employee ${emp.name}:`, e);
+        }
+      }
+    }
+
+    if (seededNewUsers) {
+      await fetchUsers();
+    }
+  };
+
+  // Main fetch data flow
   const fetchData = async () => {
     try {
       setLoading(true);
-      
+
       // Fetch employees
       const { data: empData, error: empError } = await supabase
         .from('employees')
         .select('*')
         .order('created_at', { ascending: false });
-        
+
       if (empError) throw empError;
-      
+
       const mappedEmployees: Employee[] = (empData || []).map(emp => ({
         id: emp.id,
         name: emp.name,
@@ -778,15 +1342,15 @@ export default function App() {
         activeNow: emp.active_now,
         createdAt: emp.created_at
       }));
-      
+
       // Fetch attendance logs
       const { data: logData, error: logError } = await supabase
         .from('attendance_logs')
         .select('*')
         .order('created_at', { ascending: false });
-        
+
       if (logError) throw logError;
-      
+
       const mappedLogs: AttendanceRecord[] = (logData || []).map(log => ({
         id: log.id,
         employeeId: log.employee_id,
@@ -796,15 +1360,24 @@ export default function App() {
         totalHours: log.total_hours,
         status: log.status
       }));
-      
+
       setEmployees(mappedEmployees);
       setAttendanceLogs(mappedLogs);
-      
+
+      // Fetch new modules
+      const fetchedUsers = await fetchUsers();
+      await fetchTasks();
+      await fetchLeaveRequests();
+      await fetchNotifications();
+      await fetchAuditLogs();
+
+      // Seed if empty
+      await checkAndSeedAdmin(fetchedUsers, mappedEmployees);
+
       // Select first employee for profile if none selected
       if (mappedEmployees.length > 0) {
         setSelectedEmployeeForProfile(prev => {
           if (prev) {
-            // keep previous selected if it still exists
             const stillExists = mappedEmployees.find(e => e.id === prev.id);
             return stillExists || mappedEmployees[0];
           }
@@ -815,143 +1388,622 @@ export default function App() {
       }
     } catch (err) {
       console.error('Error fetching from Supabase:', err);
-      showToast('Error syncing with database.');
+      // Fallback local load for employees and logs
+      const localEmps = localStorage.getItem('zhajirii_employees');
+      const localLogs = localStorage.getItem('zhajirii_logs');
+      if (localEmps) setEmployees(JSON.parse(localEmps));
+      if (localLogs) setAttendanceLogs(JSON.parse(localLogs));
+
+      showToast('Offline Mode: Loaded cached information.');
     } finally {
       setLoading(false);
     }
   };
 
+  // Persistent Session Loader
   useEffect(() => {
+    const savedSession = localStorage.getItem('zhajirii_session');
+    if (savedSession) {
+      try {
+        const u: UserRecord = JSON.parse(savedSession);
+        setCurrentUser(u);
+        setIsLoggedIn(true);
+        setCurrentTab(u.role === 'Admin' ? 'Dashboard' : 'EmpDashboard');
+      } catch (e) {
+        console.error('Failed to restore session:', e);
+      }
+    }
     fetchData();
   }, []);
 
-  const handleLogin = (e: FormEvent) => {
+  // Update localStorage caches whenever employees or logs change
+  useEffect(() => {
+    if (employees.length > 0) {
+      localStorage.setItem('zhajirii_employees', JSON.stringify(employees));
+    }
+  }, [employees]);
+
+  useEffect(() => {
+    if (attendanceLogs.length > 0) {
+      localStorage.setItem('zhajirii_logs', JSON.stringify(attendanceLogs));
+    }
+  }, [attendanceLogs]);
+
+  // Update selected employee when role tab changes
+  useEffect(() => {
+    if (currentUser && currentUser.role !== 'Admin') {
+      const match = employees.find(e => e.id === currentUser.employeeId);
+      if (match) {
+        setSelectedEmployeeForProfile(match);
+      }
+    }
+  }, [currentUser, employees]);
+
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
-    if (username.trim() === 'Z-Hajirii' && password === 'Admin@Hajirii') {
-      setIsLoggedIn(true);
-      setLoginError('');
-      showToast('Successfully authenticated as admin.');
+    setLoginError('');
+
+    // Fetch latest users to verify against
+    const currentUsers = await fetchUsers();
+
+    // Try finding user by username case-insensitive
+    const user = currentUsers.find(
+      u => u.username.trim().toLowerCase() === username.trim().toLowerCase()
+    );
+
+    if (user) {
+      if (user.status === 'Disabled') {
+        setLoginError('Account is disabled. Please contact your administrator.');
+        return;
+      }
+
+      const passMatch = bcrypt.compareSync(password, user.passwordHash);
+      if (passMatch) {
+        setCurrentUser(user);
+        setIsLoggedIn(true);
+        setLoginError('');
+        if (rememberMe) {
+          localStorage.setItem('zhajirii_session', JSON.stringify(user));
+        }
+        setCurrentTab(user.role === 'Admin' ? 'Dashboard' : 'EmpDashboard');
+        showToast(`Successfully logged in as ${user.fullName}`);
+        createAuditLog(user.id, user.username, 'Login', 'User successfully authenticated.');
+      } else {
+        setLoginError('Invalid username or password.');
+      }
     } else {
-      setLoginError('Invalid username or password. Please use Z-Hajirii / Admin@Hajirii');
+      // Fallback emergency seed checker
+      if (username.trim() === 'Z-Hajirii' && password === 'Admin@Hajirii') {
+        // Table must be empty or missing connection. Seed Admin and log in.
+        const defaultAdmin: UserRecord = {
+          id: 'usr-admin',
+          username: 'Z-Hajirii',
+          passwordHash: bcrypt.hashSync('Admin@Hajirii', 10),
+          fullName: 'Admin User',
+          email: 'admin@zhajirii.com',
+          employeeId: 'emp-admin',
+          department: 'Management',
+          designation: 'System Manager',
+          phoneNumber: '123-456-7890',
+          joiningDate: '2026-01-01',
+          role: 'Admin',
+          status: 'Active'
+        };
+        await saveUser(defaultAdmin);
+        setCurrentUser(defaultAdmin);
+        setIsLoggedIn(true);
+        setCurrentTab('Dashboard');
+        showToast('Successfully logged in (Emergency Seed Admin).');
+      } else {
+        setLoginError('Invalid username or password.');
+      }
     }
   };
 
   const handleLogout = () => {
+    if (currentUser) {
+      createAuditLog(currentUser.id, currentUser.username, 'Logout', 'User signed out.');
+    }
+    setCurrentUser(null);
     setIsLoggedIn(false);
+    localStorage.removeItem('zhajirii_session');
+    setUsername('');
+    setPassword('');
     showToast('Logged out successfully.');
   };
 
-  // Create or Update Employee flow
-  const handleSubmitEmployee = async (e: FormEvent) => {
+  // Change Password logic
+  const handleChangePasswordSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!newEmpName.trim() || !newEmpEmail.trim() || !newEmpId.trim()) {
+    if (!currentUser) return;
+
+    if (!settingsOldPass || !settingsNewPass || !settingsConfirmPass) {
+      showToast('Please fill in all password fields.');
+      return;
+    }
+
+    if (settingsNewPass !== settingsConfirmPass) {
+      showToast('New passwords do not match.');
+      return;
+    }
+
+    // Verify old password
+    const verify = bcrypt.compareSync(settingsOldPass, currentUser.passwordHash);
+    if (!verify) {
+      showToast('Incorrect old password.');
+      return;
+    }
+
+    const updatedUser: UserRecord = {
+      ...currentUser,
+      passwordHash: bcrypt.hashSync(settingsNewPass, 10),
+      updatedAt: new Date().toISOString()
+    };
+
+    await saveUser(updatedUser);
+    setCurrentUser(updatedUser);
+    localStorage.setItem('zhajirii_session', JSON.stringify(updatedUser));
+
+    setSettingsOldPass('');
+    setSettingsNewPass('');
+    setSettingsConfirmPass('');
+    showToast('Password updated successfully!');
+    createAuditLog(currentUser.id, currentUser.username, 'Password Change', 'User successfully changed their password.');
+  };
+
+  // Create or Update User flow (Admin action)
+  const handleUserCRUDSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (
+      !userFormFullName.trim() ||
+      !userFormUsername.trim() ||
+      !userFormEmail.trim() ||
+      !userFormDesignation.trim() ||
+      !userFormDepartment.trim() ||
+      !userFormEmployeeId.trim()
+    ) {
       showToast('Please fill in all required fields.');
       return;
     }
 
-    if (editingEmployee) {
-      // Edit mode
-      const dbEmp = {
-        name: newEmpName.trim(),
-        role: selectedRoles.join(', '),
-        email: newEmpEmail.trim(),
-        emp_id: newEmpId.trim().toUpperCase(),
-        avatar_url: newEmpAvatar.trim() || editingEmployee.avatarUrl
+    // Check duplicate username (except for current editing user)
+    const duplicate = users.find(
+      u =>
+        u.username.toLowerCase() === userFormUsername.trim().toLowerCase() &&
+        (!editingUser || u.id !== editingUser.id)
+    );
+    if (duplicate) {
+      showToast('Username already exists. Please choose another.');
+      return;
+    }
+
+    const targetEmpIdStr = `emp-${Date.now()}`;
+    const employeeIdToUse = editingUser ? (editingUser.employeeId || targetEmpIdStr) : targetEmpIdStr;
+
+    // 1. Sync / Save to Employees table
+    const avatar = `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random() * 999999)}?auto=format&fit=crop&q=80&w=150`;
+    const dbEmp = {
+      id: employeeIdToUse,
+      name: userFormFullName.trim(),
+      role: userFormDesignation.trim(),
+      email: userFormEmail.trim(),
+      avatar_url: avatar,
+      emp_id: userFormEmployeeId.trim().toUpperCase(),
+      active_now: userFormStatus === 'Active'
+    };
+
+    try {
+      const { error } = await supabase.from('employees').upsert(dbEmp);
+      if (error) throw error;
+    } catch (e) {
+      console.warn('Failed to sync employee record:', e);
+    }
+
+    // 2. Hash and Save User
+    let passHash = editingUser ? editingUser.passwordHash : bcrypt.hashSync('Pass@123', 10);
+    if (userFormPassword.trim()) {
+      passHash = bcrypt.hashSync(userFormPassword.trim(), 10);
+    }
+
+    const targetUserId = editingUser ? editingUser.id : `usr-${Date.now()}`;
+    const userToSave: UserRecord = {
+      id: targetUserId,
+      username: userFormUsername.trim(),
+      passwordHash: passHash,
+      fullName: userFormFullName.trim(),
+      email: userFormEmail.trim(),
+      employeeId: employeeIdToUse,
+      department: userFormDepartment.trim(),
+      designation: userFormDesignation.trim(),
+      phoneNumber: userFormPhone.trim(),
+      joiningDate: userFormJoiningDate,
+      role: userFormRole,
+      status: userFormStatus,
+      internType: userFormInternType,
+      managerId: userFormRole === 'Employee' && userFormManagerId ? userFormManagerId : null,
+      updatedAt: new Date().toISOString()
+    };
+
+    await saveUser(userToSave);
+
+    // Write logs & notifications
+    if (editingUser) {
+      showToast(`User ${userToSave.fullName} updated successfully.`);
+      createAuditLog(
+        currentUser?.id || null,
+        currentUser?.username || 'Admin',
+        'Edit User',
+        `Updated user account: ${userToSave.username}`
+      );
+    } else {
+      showToast(`Created user ${userToSave.fullName} successfully. Default password is Pass@123`);
+      createAuditLog(
+        currentUser?.id || null,
+        currentUser?.username || 'Admin',
+        'Create User',
+        `Created new user account: ${userToSave.username}`
+      );
+      await createNotification(
+        userToSave.id,
+        'Welcome to Z-Hajirii!',
+        `Your user profile has been created. Role: ${userFormRole}.`,
+        'System'
+      );
+    }
+
+    // Reset Form
+    setIsUserModalOpen(false);
+    setEditingUser(null);
+    setUserFormFullName('');
+    setUserFormUsername('');
+    setUserFormEmail('');
+    setUserFormPhone('');
+    setUserFormDesignation('');
+    setUserFormDepartment('');
+    setUserFormJoiningDate('');
+    setUserFormRole('Employee');
+    setUserFormStatus('Active');
+    setUserFormPassword('');
+    setUserFormEmployeeId('');
+    setUserFormInternType('Online Intern');
+    setUserFormManagerId('');
+
+    await fetchData();
+  };
+
+  // Delete user flow
+  const handleDeleteUserFlow = async (userId: string, userName: string, empId: string | null) => {
+    if (window.confirm(`Are you sure you want to permanently delete user ${userName}?`)) {
+      if (empId) {
+        try {
+          await supabase.from('attendance_logs').delete().eq('employee_id', empId);
+          await supabase.from('employees').delete().eq('id', empId);
+        } catch (e) {
+          console.warn('Failed to delete linked employee/attendance records:', e);
+        }
+      }
+
+      await deleteUser(userId);
+      showToast(`Permanently deleted user account ${userName}.`);
+      createAuditLog(
+        currentUser?.id || null,
+        currentUser?.username || 'Admin',
+        'Delete User',
+        `Deleted user account and records: ${userName}`
+      );
+      await fetchData();
+    }
+  };
+
+  // Promote User to Team Leader flow
+  const handlePromoteToTeamLeader = async (user: UserRecord) => {
+    if (window.confirm(`Are you sure you want to promote ${user.fullName} to Team Leader?`)) {
+      const updatedUser: UserRecord = {
+        ...user,
+        role: 'Team Leader',
+        updatedAt: new Date().toISOString()
       };
+
+      await saveUser(updatedUser);
+      showToast(`${user.fullName} has been successfully promoted to Team Leader!`);
+
+      createAuditLog(
+        currentUser?.id || null,
+        currentUser?.username || 'Admin',
+        'Promote User',
+        `Promoted user ${user.username} to Team Leader`
+      );
+
+      await createNotification(
+        user.id,
+        'Promotion Announcement',
+        `Congratulations! You have been promoted to Team Leader.`,
+        'System'
+      );
+      await fetchData();
+    }
+  };
+
+  // Disable / Enable User status toggle
+  const handleToggleUserStatus = async (user: UserRecord) => {
+    const nextStatus = user.status === 'Active' ? 'Disabled' : 'Active';
+    const updated = {
+      ...user,
+      status: nextStatus,
+      updatedAt: new Date().toISOString()
+    };
+
+    await saveUser(updated);
+    showToast(`Account status for ${user.fullName} updated to ${nextStatus}.`);
+    createAuditLog(
+      currentUser?.id || null,
+      currentUser?.username || 'Admin',
+      'Toggle User Status',
+      `Toggled status for ${user.username} to ${nextStatus}`
+    );
+    await fetchData();
+  };
+
+  // Task creation/update submit
+  const handleTaskSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!newTaskTitle.trim()) {
+      showToast('Please enter a task title.');
+      return;
+    }
+
+    const assigneeId = newTaskAssigneeId || (currentUser ? currentUser.id : '');
+    const assigneeUser = users.find(u => u.id === assigneeId);
+
+    const task: TaskRecord = {
+      id: `task-${Date.now()}`,
+      userId: assigneeId,
+      title: newTaskTitle.trim(),
+      description: newTaskDesc.trim(),
+      priority: newTaskPriority,
+      deadline: newTaskDeadline || todayDateString,
+      status: 'Pending',
+      attachment: newTaskAttachment.trim(),
+      createdAt: new Date().toISOString()
+    };
+
+    await saveTask(task);
+    showToast(`Task assigned successfully.`);
+    setIsAddTaskModalOpen(false);
+
+    // Notify assignee if not self-assigned
+    if (currentUser && currentUser.id !== assigneeId) {
+      await createNotification(
+        assigneeId,
+        'New Task Assigned',
+        `You have been assigned a new task: "${task.title}" by ${currentUser.fullName}`,
+        'Task'
+      );
+    }
+
+    createAuditLog(
+      currentUser?.id || null,
+      currentUser?.username || 'System',
+      'Assign Task',
+      `Assigned task "${task.title}" to ${assigneeUser ? assigneeUser.username : 'self'}`
+    );
+
+    // Reset form
+    setNewTaskTitle('');
+    setNewTaskDesc('');
+    setNewTaskPriority('Medium');
+    setNewTaskDeadline('');
+    setNewTaskAssigneeId('');
+    setNewTaskAttachment('');
+
+    await fetchData();
+  };
+
+  // Transition task status
+  const handleUpdateTaskStatus = async (task: TaskRecord, nextStatus: 'Pending' | 'In Progress' | 'Completed') => {
+    const updated: TaskRecord = {
+      ...task,
+      status: nextStatus,
+      completedAt: nextStatus === 'Completed' ? new Date().toISOString() : undefined
+    };
+
+    await saveTask(updated);
+    showToast(`Task status updated to ${nextStatus}.`);
+
+    // Notify admin/managers of completion
+    if (nextStatus === 'Completed') {
+      const admins = users.filter(u => u.role === 'Admin');
+      admins.forEach(async adm => {
+        if (adm.id !== task.userId) {
+          await createNotification(
+            adm.id,
+            'Task Completed',
+            `User ${currentUser?.fullName || 'Employee'} completed task: "${task.title}"`,
+            'Task'
+          );
+        }
+      });
+    }
+
+    createAuditLog(
+      currentUser?.id || null,
+      currentUser?.username || 'System',
+      'Update Task Status',
+      `Updated task "${task.title}" status to ${nextStatus}`
+    );
+
+    await fetchData();
+  };
+
+  // Submit leave request (Employee action)
+  const handleLeaveRequestSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!leaveFromDate || !leaveToDate || !leaveReason.trim()) {
+      showToast('Please fill in leave dates and reason.');
+      return;
+    }
+
+    const start = new Date(leaveFromDate);
+    const end = new Date(leaveToDate);
+    if (start > end) {
+      showToast('From Date cannot be after To Date.');
+      return;
+    }
+
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+    if (!currentUser) return;
+
+    const request: LeaveRequestRecord = {
+      id: `leave-${Date.now()}`,
+      userId: currentUser.id,
+      leaveType,
+      fromDate: leaveFromDate,
+      toDate: leaveToDate,
+      totalDays,
+      reason: leaveReason.trim(),
+      description: leaveDesc.trim(),
+      attachment: leaveAttachment.trim(),
+      status: 'Pending',
+      createdAt: new Date().toISOString()
+    };
+
+    await saveLeaveRequest(request);
+    showToast(`Leave request submitted for ${totalDays} days.`);
+
+    // Notify Admins
+    const admins = users.filter(u => u.role === 'Admin');
+    admins.forEach(async adm => {
+      await createNotification(
+        adm.id,
+        'New Leave Application',
+        `${currentUser.fullName} applied for ${totalDays} days of ${leaveType} leave.`,
+        'Leave'
+      );
+    });
+
+    createAuditLog(
+      currentUser.id,
+      currentUser.username,
+      'Apply Leave',
+      `Applied for ${totalDays} days of ${leaveType} leave starting ${leaveFromDate}`
+    );
+
+    // Reset Form
+    setLeaveFromDate('');
+    setLeaveToDate('');
+    setLeaveReason('');
+    setLeaveDesc('');
+    setLeaveAttachment('');
+
+    await fetchData();
+  };
+
+  // Approve / Reject Leave Request (Admin action)
+  const handleAdminLeaveDecisionSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!selectedLeaveForAdminAction || !currentUser) return;
+
+    const updated: LeaveRequestRecord = {
+      ...selectedLeaveForAdminAction,
+      status: adminLeaveActionType,
+      adminComment: adminLeaveComment.trim(),
+      approvedBy: currentUser.id,
+      approvedAt: new Date().toISOString()
+    };
+
+    await saveLeaveRequest(updated);
+    showToast(`Leave request marked as ${adminLeaveActionType}.`);
+
+    // Notify employee
+    const applicant = users.find(u => u.id === selectedLeaveForAdminAction.userId);
+    if (applicant) {
+      await createNotification(
+        applicant.id,
+        `Leave Request ${adminLeaveActionType}`,
+        `Your request for ${selectedLeaveForAdminAction.leaveType} leave has been ${adminLeaveActionType.toLowerCase()}. Comment: ${adminLeaveComment.trim() || 'None'}`,
+        'Leave'
+      );
+    }
+
+    createAuditLog(
+      currentUser.id,
+      currentUser.username,
+      `${adminLeaveActionType} Leave`,
+      `Marked leave request ${selectedLeaveForAdminAction.id} as ${adminLeaveActionType}`
+    );
+
+    setIsAdminLeaveCommentModalOpen(false);
+    setSelectedLeaveForAdminAction(null);
+    setAdminLeaveComment('');
+
+    await fetchData();
+  };
+
+  // Clock In/Out on Employee Dashboard
+  const handleEmployeeClockToggle = async () => {
+    if (!currentUser || !currentUser.employeeId) return;
+
+    const empId = currentUser.employeeId;
+    const existingLog = attendanceLogs.find(log => log.employeeId === empId && log.date === todayDateString);
+
+    if (!existingLog) {
+      // Clock In
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+      const minsLate = calculateMinutesLate(timeStr);
+      const autoStatus = minsLate > 0 ? 'Late' : 'Present';
+
+      const dbLog = {
+        id: `rec-${Date.now()}`,
+        employee_id: empId,
+        date: todayDateString,
+        clock_in: timeStr,
+        clock_out: '--:--',
+        total_hours: '0h 00m',
+        status: autoStatus
+      };
+
+      try {
+        const { error } = await supabase.from('attendance_logs').insert(dbLog);
+        if (error) throw error;
+        showToast('Successfully clocked in.');
+        createAuditLog(currentUser.id, currentUser.username, 'Clock In', `Clocked in at ${timeStr}`);
+        await fetchData();
+      } catch (err) {
+        console.error(err);
+        showToast('Failed to Clock In.');
+      }
+    } else if (existingLog.clockOut === '--:--') {
+      // Clock Out
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+      const totalHours = calculateDuration(existingLog.clockIn, timeStr);
 
       try {
         const { error } = await supabase
-          .from('employees')
-          .update(dbEmp)
-          .eq('id', editingEmployee.id);
-        
-        if (error) throw error;
+          .from('attendance_logs')
+          .update({
+            clock_out: timeStr,
+            total_hours: totalHours
+          })
+          .eq('id', existingLog.id);
 
-        setIsCreateModalOpen(false);
-        setEditingEmployee(null);
-        // Reset forms
-        setNewEmpName('');
-        setSelectedRoles(['Software Engineer']);
-        setNewEmpEmail('');
-        setNewEmpId('');
-        setNewEmpAvatar('');
-        showToast(`Employee ${dbEmp.name} updated successfully!`);
+        if (error) throw error;
+        showToast('Successfully clocked out.');
+        createAuditLog(currentUser.id, currentUser.username, 'Clock Out', `Clocked out at ${timeStr}. Duration: ${totalHours}`);
         await fetchData();
       } catch (err) {
         console.error(err);
-        showToast('Failed to update employee in database.');
+        showToast('Failed to Clock Out.');
       }
     } else {
-      // Create mode
-      const newEmpIdStr = `emp-${Date.now()}`;
-      const avatar = newEmpAvatar.trim() || `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random() * 999999)}?auto=format&fit=crop&q=80&w=150`;
-
-      const dbEmp = {
-        id: newEmpIdStr,
-        name: newEmpName.trim(),
-        role: selectedRoles.join(', '),
-        email: newEmpEmail.trim(),
-        emp_id: newEmpId.trim().toUpperCase(),
-        avatar_url: avatar,
-        active_now: true
-      };
-
-      try {
-        const { error: empErr } = await supabase.from('employees').insert(dbEmp);
-        if (empErr) throw empErr;
-
-        // Also auto-create a default Present log for today
-        const now = new Date();
-        const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-        const autoStatus = calculateMinutesLate(timeStr) > 0 ? 'Late' : 'Present';
-        const dbLog = {
-          id: `rec-${Date.now()}`,
-          employee_id: newEmpIdStr,
-          date: todayDateString,
-          clock_in: timeStr,
-          clock_out: '--:--',
-          total_hours: '0h 00m',
-          status: autoStatus
-        };
-        
-        const { error: logErr } = await supabase.from('attendance_logs').insert(dbLog);
-        if (logErr) throw logErr;
-
-        setIsCreateModalOpen(false);
-        // Reset forms
-        setNewEmpName('');
-        setSelectedRoles(['Software Engineer']);
-        setNewEmpEmail('');
-        setNewEmpId('');
-        setNewEmpAvatar('');
-        showToast(`Employee ${dbEmp.name} created successfully!`);
-        await fetchData();
-      } catch (err) {
-        console.error(err);
-        showToast('Failed to create employee in database.');
-      }
+      showToast('You have already clocked in and out for today.');
     }
   };
 
-  // Delete employee flow
-  const handleDeleteEmployee = async (id: string, name: string) => {
-    if (window.confirm(`Are you sure you want to remove ${name}?`)) {
-      try {
-        await supabase.from('attendance_logs').delete().eq('employee_id', id);
-        const { error } = await supabase.from('employees').delete().eq('id', id);
-        if (error) throw error;
-
-        showToast(`Removed employee ${name}.`);
-        setSelectedEmployeeForProfile(prev => prev?.id === id ? null : prev);
-        await fetchData();
-      } catch (err) {
-        console.error(err);
-        showToast('Failed to delete employee from database.');
-      }
-    }
-  };
-
-  // Change individual attendance record status
+  // Change individual attendance record status (Admin overrides)
   const handleUpdateStatus = async (employeeId: string, status: 'Present' | 'Absent' | 'Late', dateString = todayDateString) => {
     const existingLog = attendanceLogs.find(log => log.employeeId === employeeId && log.date === dateString);
 
@@ -1006,66 +2058,173 @@ export default function App() {
         if (error) throw error;
       }
 
-      showToast(`Status updated successfully.`);
+      showToast(`Successfully marked attendance as ${finalStatus}`);
+      createAuditLog(
+        currentUser?.id || null,
+        currentUser?.username || 'Admin',
+        'Override Attendance',
+        `Set attendance for employee ${employeeId} to ${finalStatus} on ${dateString}`
+      );
       await fetchData();
     } catch (err) {
       console.error(err);
-      showToast('Failed to update status in database.');
+      showToast('Failed to update status.');
     }
   };
 
-  // Save clock out time dynamically
+  // Clock out worker override (Admin action)
   const handleClockOut = async (employeeId: string, dateString = todayDateString) => {
     const existingLog = attendanceLogs.find(log => log.employeeId === employeeId && log.date === dateString);
-    if (!existingLog || existingLog.clockIn === '--:--') {
-      showToast('User must clock in first.');
+    if (!existingLog) {
+      showToast('No clock in log registered for today.');
       return;
     }
 
     const now = new Date();
     const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-    const totalHours = calculateDuration(existingLog.clockIn, timeStr);
-    
-    const breakMins = getBreakMinutes(existingLog.totalHours);
-    const existingRemark = getRemark(existingLog.totalHours);
-    const existingExtraMins = getExtraHoursMinutes(existingLog.totalHours);
-    const existingAllowance = getBreakAllowanceMinutes(existingLog.totalHours);
-    const updatedTotalHours = `${totalHours}|${breakMins}|${existingRemark}|${existingExtraMins}|${existingAllowance}`;
+    const duration = calculateDuration(existingLog.clockIn, timeStr);
 
     try {
       const { error } = await supabase
         .from('attendance_logs')
         .update({
           clock_out: timeStr,
-          total_hours: updatedTotalHours
+          total_hours: duration
         })
         .eq('id', existingLog.id);
+
       if (error) throw error;
 
-      showToast(`User successfully clocked out at ${timeStr}.`);
+      showToast('Employee successfully clocked out.');
+      createAuditLog(
+        currentUser?.id || null,
+        currentUser?.username || 'Admin',
+        'Override Clock Out',
+        `Clocked out employee ${employeeId} on ${dateString}`
+      );
       await fetchData();
     } catch (err) {
       console.error(err);
-      showToast('Failed to save clock out time.');
+      showToast('Failed to clock out employee.');
     }
   };
 
-  // Delete individual attendance log
+  // Delete attendance record
   const handleDeleteAttendance = async (logId: string) => {
-    if (window.confirm('Are you sure you want to delete this attendance log?')) {
+    if (window.confirm('Are you sure you want to delete this attendance record?')) {
       try {
-        const { error } = await supabase
-          .from('attendance_logs')
-          .delete()
-          .eq('id', logId);
+        const { error } = await supabase.from('attendance_logs').delete().eq('id', logId);
         if (error) throw error;
-
-        showToast('Attendance log deleted successfully.');
+        showToast('Attendance record deleted.');
         await fetchData();
       } catch (err) {
         console.error(err);
-        showToast('Failed to delete attendance log.');
+        showToast('Failed to delete attendance record.');
       }
+    }
+  };
+
+  // Update break minutes for an attendance record dynamically
+  const handleUpdateBreakMinutes = async (logId: string, breakMins: number) => {
+    const existingLog = attendanceLogs.find(l => l.id === logId);
+    if (!existingLog) {
+      showToast('Attendance log not found.');
+      return;
+    }
+
+    const rawHoursStr = existingLog.totalHours.split('|')[0];
+    const existingRemark = getRemark(existingLog.totalHours);
+    const existingExtraMins = getExtraHoursMinutes(existingLog.totalHours);
+    const existingAllowance = getBreakAllowanceMinutes(existingLog.totalHours);
+    const updatedTotalHours = `${rawHoursStr}|${breakMins}|${existingRemark}|${existingExtraMins}|${existingAllowance}`;
+
+    try {
+      const { error } = await supabase
+        .from('attendance_logs')
+        .update({
+          total_hours: updatedTotalHours
+        })
+        .eq('id', logId);
+
+      if (error) throw error;
+
+      showToast('Break time updated.');
+      await fetchData();
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to update break time.');
+    }
+  };
+
+  // Update break allowance minutes for an attendance record dynamically
+  const handleUpdateBreakAllowance = async (logId: string, allowanceMins: number) => {
+    const existingLog = attendanceLogs.find(l => l.id === logId);
+    if (!existingLog) {
+      showToast('Attendance log not found.');
+      return;
+    }
+
+    const rawHoursStr = existingLog.totalHours.split('|')[0];
+    const existingBreak = getBreakMinutes(existingLog.totalHours);
+    const existingRemark = getRemark(existingLog.totalHours);
+    const existingExtraMins = getExtraHoursMinutes(existingLog.totalHours);
+    const updatedTotalHours = `${rawHoursStr}|${existingBreak}|${existingRemark}|${existingExtraMins}|${allowanceMins}`;
+
+    try {
+      const { error } = await supabase
+        .from('attendance_logs')
+        .update({
+          total_hours: updatedTotalHours
+        })
+        .eq('id', logId);
+
+      if (error) throw error;
+
+      showToast('Break allowance updated.');
+      await fetchData();
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to update break allowance.');
+    }
+  };
+
+  // Save changes to edited attendance log
+  const handleSaveAttendanceEdit = async (logId: string) => {
+    const inTimeStr = editStatus === 'Absent' ? '--:--' : time24To12(editClockIn);
+    const outTimeStr = editStatus === 'Absent' ? '--:--' : time24To12(editClockOut);
+    const totalHours = calculateDuration(inTimeStr, outTimeStr);
+
+    const existingLog = attendanceLogs.find(l => l.id === logId);
+    const breakMins = (existingLog && editStatus !== 'Absent') ? getBreakMinutes(existingLog.totalHours) : 0;
+    const totalExtraMins = editStatus === 'Absent' ? 0 : (editExtraHoursHrs * 60 + editExtraHoursMins);
+    const existingAllowance = (existingLog && editStatus !== 'Absent') ? getBreakAllowanceMinutes(existingLog.totalHours) : 0;
+    const updatedTotalHours = `${totalHours}|${breakMins}|${editStatus === 'Absent' ? '' : editRemark.trim()}|${totalExtraMins}|${existingAllowance}`;
+
+    let finalStatus = editStatus;
+    if (finalStatus !== 'Absent' && inTimeStr !== '--:--') {
+      const minsLate = calculateMinutesLate(inTimeStr);
+      finalStatus = minsLate > 0 ? 'Late' : 'Present';
+    }
+
+    try {
+      const { error } = await supabase
+        .from('attendance_logs')
+        .update({
+          clock_in: inTimeStr,
+          clock_out: outTimeStr,
+          total_hours: updatedTotalHours,
+          status: finalStatus
+        })
+        .eq('id', logId);
+
+      if (error) throw error;
+
+      showToast('Attendance log updated successfully.');
+      setEditingLogId(null);
+      await fetchData();
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to update attendance log.');
     }
   };
 
@@ -1122,10 +2281,9 @@ export default function App() {
           status = 'Weekend';
         }
 
-        // Escape fields to prevent CSV injection or breaking on commas
         const escapedName = `"${emp.name.replace(/"/g, '""')}"`;
         const escapedRole = `"${emp.role.replace(/"/g, '""')}"`;
-        
+
         const rawHours = totalHours.split('|')[0];
         const breakMins = getBreakMinutes(totalHours);
         const extraHoursStr = getExtraHoursStr(totalHours);
@@ -1325,8 +2483,8 @@ export default function App() {
       `;
     }).join('');
 
-    const attendanceRate = (totalDays - weekendCount) > 0 
-      ? (((presentCount + lateCount) / (totalDays - weekendCount)) * 100).toFixed(1) + '%' 
+    const attendanceRate = (totalDays - weekendCount) > 0
+      ? (((presentCount + lateCount) / (totalDays - weekendCount)) * 100).toFixed(1) + '%'
       : '100.0%';
 
     const printWindow = window.open('', '_blank');
@@ -1804,110 +2962,6 @@ export default function App() {
     setIsExportModalOpen(false);
   };
 
-  // Save changes to edited attendance log
-  const handleSaveAttendanceEdit = async (logId: string) => {
-    const inTimeStr = editStatus === 'Absent' ? '--:--' : time24To12(editClockIn);
-    const outTimeStr = editStatus === 'Absent' ? '--:--' : time24To12(editClockOut);
-    const totalHours = calculateDuration(inTimeStr, outTimeStr);
-    
-    const existingLog = attendanceLogs.find(l => l.id === logId);
-    const breakMins = (existingLog && editStatus !== 'Absent') ? getBreakMinutes(existingLog.totalHours) : 0;
-    const totalExtraMins = editStatus === 'Absent' ? 0 : (editExtraHoursHrs * 60 + editExtraHoursMins);
-    const existingAllowance = (existingLog && editStatus !== 'Absent') ? getBreakAllowanceMinutes(existingLog.totalHours) : 0;
-    const updatedTotalHours = `${totalHours}|${breakMins}|${editStatus === 'Absent' ? '' : editRemark.trim()}|${totalExtraMins}|${existingAllowance}`;
-
-    let finalStatus = editStatus;
-    if (finalStatus !== 'Absent' && inTimeStr !== '--:--') {
-      const minsLate = calculateMinutesLate(inTimeStr);
-      finalStatus = minsLate > 0 ? 'Late' : 'Present';
-    }
-
-    try {
-      const { error } = await supabase
-        .from('attendance_logs')
-        .update({
-          clock_in: inTimeStr,
-          clock_out: outTimeStr,
-          total_hours: updatedTotalHours,
-          status: finalStatus
-        })
-        .eq('id', logId);
-
-      if (error) throw error;
-
-      showToast('Attendance log updated successfully.');
-      setEditingLogId(null);
-      await fetchData();
-    } catch (err) {
-      console.error(err);
-      showToast('Failed to update attendance log.');
-    }
-  };
-
-  // Update break minutes for an attendance record dynamically
-  const handleUpdateBreakMinutes = async (logId: string, breakMins: number) => {
-    const existingLog = attendanceLogs.find(l => l.id === logId);
-    if (!existingLog) {
-      showToast('Attendance log not found.');
-      return;
-    }
-
-    const rawHoursStr = existingLog.totalHours.split('|')[0];
-    const existingRemark = getRemark(existingLog.totalHours);
-    const existingExtraMins = getExtraHoursMinutes(existingLog.totalHours);
-    const existingAllowance = getBreakAllowanceMinutes(existingLog.totalHours);
-    const updatedTotalHours = `${rawHoursStr}|${breakMins}|${existingRemark}|${existingExtraMins}|${existingAllowance}`;
-
-    try {
-      const { error } = await supabase
-        .from('attendance_logs')
-        .update({
-          total_hours: updatedTotalHours
-        })
-        .eq('id', logId);
-
-      if (error) throw error;
-
-      showToast('Break time updated.');
-      await fetchData();
-    } catch (err) {
-      console.error(err);
-      showToast('Failed to update break time.');
-    }
-  };
-
-  // Update break allowance minutes for an attendance record dynamically
-  const handleUpdateBreakAllowance = async (logId: string, allowanceMins: number) => {
-    const existingLog = attendanceLogs.find(l => l.id === logId);
-    if (!existingLog) {
-      showToast('Attendance log not found.');
-      return;
-    }
-
-    const rawHoursStr = existingLog.totalHours.split('|')[0];
-    const existingBreak = getBreakMinutes(existingLog.totalHours);
-    const existingRemark = getRemark(existingLog.totalHours);
-    const existingExtraMins = getExtraHoursMinutes(existingLog.totalHours);
-    const updatedTotalHours = `${rawHoursStr}|${existingBreak}|${existingRemark}|${existingExtraMins}|${allowanceMins}`;
-
-    try {
-      const { error } = await supabase
-        .from('attendance_logs')
-        .update({
-          total_hours: updatedTotalHours
-        })
-        .eq('id', logId);
-
-      if (error) throw error;
-
-      showToast('Break allowance updated.');
-      await fetchData();
-    } catch (err) {
-      console.error(err);
-      showToast('Failed to update break allowance.');
-    }
-  };
-
   // Filter Employees List based on search and roles dropdown
   const filteredEmployees = useMemo(() => {
     return employees.filter(emp => {
@@ -1916,7 +2970,7 @@ export default function App() {
         emp.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
         emp.empId.toLowerCase().includes(searchTerm.toLowerCase());
 
-      const matchesRole = roleFilter === 'All Roles' || 
+      const matchesRole = roleFilter === 'All Roles' ||
         (emp.role && emp.role.split(',').map(r => r.trim()).includes(roleFilter));
 
       return matchesSearch && matchesRole;
@@ -1938,7 +2992,6 @@ export default function App() {
         else if (todayLog.status === 'Absent') absent += 1;
         else if (todayLog.status === 'Late') late += 1;
       } else {
-        // If no log is registered for this date, assume absent or un-logged
         absent += 1;
       }
     });
@@ -2016,12 +3069,59 @@ export default function App() {
     showToast(`Viewing attendance detailed profile for ${employee.name}`);
   };
 
+  // Helper to filter tasks by current view
+  const myFilteredTasks = useMemo(() => {
+    if (!currentUser) return [];
+
+    return tasks.filter(t => {
+      // Filter by assignee user
+      const isMine = t.userId === currentUser.id;
+
+      const matchesSearch = t.title.toLowerCase().includes(taskSearchTerm.toLowerCase()) ||
+        t.description.toLowerCase().includes(taskSearchTerm.toLowerCase());
+
+      const matchesPriority = taskPriorityFilter === 'All' || t.priority === taskPriorityFilter;
+
+      let matchesTab = true;
+      if (currentTab === 'PendingTasks') {
+        matchesTab = t.status === 'Pending' || t.status === 'In Progress';
+      } else if (currentTab === 'CompletedTasks') {
+        matchesTab = t.status === 'Completed';
+      }
+
+      return isMine && matchesSearch && matchesPriority && matchesTab;
+    });
+  }, [tasks, currentUser, taskSearchTerm, taskPriorityFilter, currentTab]);
+
+  // Count leaves and tasks for current employee
+  const employeeStats = useMemo(() => {
+    if (!currentUser) return { pendingTasks: 0, completedTasks: 0, approvedLeaves: 0, totalLeavesDays: 0 };
+    const myTasks = tasks.filter(t => t.userId === currentUser.id);
+    const myLeaves = leaveRequests.filter(l => l.userId === currentUser.id);
+
+    return {
+      pendingTasks: myTasks.filter(t => t.status !== 'Completed').length,
+      completedTasks: myTasks.filter(t => t.status === 'Completed').length,
+      approvedLeaves: myLeaves.filter(l => l.status === 'Approved').length,
+      totalLeavesDays: myLeaves.filter(l => l.status === 'Approved').reduce((acc, curr) => acc + curr.totalDays, 0)
+    };
+  }, [tasks, leaveRequests, currentUser]);
+
+  // Current date/time display for employee dashboard
+  const [currentDateTime, setCurrentDateTime] = useState<string>(new Date().toLocaleString());
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentDateTime(new Date().toLocaleString());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
     <div className="min-h-screen text-on-surface bg-background">
       {/* Toast Feedback */}
       {toastMessage && (
-        <div className="fixed top-4 right-4 z-[99] flex items-center gap-2 bg-primary text-on-primary px-4 py-3 rounded-lg shadow-lg text-sm transition-all duration-300">
-          <Check className="w-4 h-4 text-emerald-400" />
+        <div className="fixed top-4 right-4 z-[999] flex items-center gap-2 bg-slate-900/95 backdrop-blur-md text-white px-4 py-3 rounded-lg shadow-xl text-xs border border-white/10 animate-bounce-short">
+          <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></span>
           <span>{toastMessage}</span>
         </div>
       )}
@@ -2029,7 +3129,6 @@ export default function App() {
       {!isLoggedIn ? (
         /* HIGHEST FIDELITY LOGIN CANVAS SCREEN */
         <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden bg-primary py-12">
-          {/* Atmospheric Background Decoration */}
           <div className="fixed inset-0 overflow-hidden pointer-events-none">
             <div className="absolute -top-[10%] -left-[10%] w-[50%] h-[50%] bg-[#3fe1fd]/15 rounded-full blur-[120px]"></div>
             <div className="absolute -bottom-[10%] -right-[10%] w-[60%] h-[60%] bg-[#0f4c81]/25 rounded-full blur-[120px]"></div>
@@ -2037,17 +3136,14 @@ export default function App() {
 
           <main className="relative z-10 w-full max-w-[440px]">
             <div className="bg-surface-container-lowest rounded-xl p-6 md:p-8 border border-outline-variant custom-shadow transition-transform duration-300 hover:scale-[1.01]">
-              
-              {/* Header Section */}
               <div className="flex flex-col items-center mb-6">
-                <div className="mb-4 animate-bounce flex items-center justify-center bg-white p-2 rounded-xl shadow-sm border border-outline-variant">
+                <div className="mb-4 flex items-center justify-center bg-white p-2 rounded-xl shadow-sm border border-outline-variant">
                   <img src={logoUrl} alt="Zeex-AI Logo" className="h-16 w-auto object-contain" />
                 </div>
                 <h1 className="font-bold text-2xl text-primary tracking-tight mb-1 text-center">Z-Hajirii Login</h1>
-                <p className="text-sm text-on-surface-variant font-medium text-center">Smart Attendance Management by ZEEXAI</p>
+                <p className="text-sm text-on-surface-variant font-medium text-center animate-pulse">Smart HR & Attendance by ZEEXAI</p>
               </div>
 
-              {/* Login Form */}
               <form onSubmit={handleLogin} className="space-y-4">
                 {loginError && (
                   <div className="flex items-start gap-2 p-3 rounded-lg bg-error-container/20 border border-error/20">
@@ -2056,13 +3152,12 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Username Input */}
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider" htmlFor="username">
                     Username
                   </label>
                   <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-outline">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <User className="w-5 h-5 text-on-surface-variant" />
                     </div>
                     <input
@@ -2072,13 +3167,12 @@ export default function App() {
                       required
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
-                      placeholder="admin"
+                      placeholder="Enter username"
                       className="block w-full pl-10 pr-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-sm text-on-surface focus:ring-2 focus:ring-primary-container focus:border-primary outline-none transition-all duration-200"
                     />
                   </div>
                 </div>
 
-                {/* Password Input */}
                 <div className="space-y-1">
                   <div className="flex justify-between items-center">
                     <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider" htmlFor="password">
@@ -2086,14 +3180,14 @@ export default function App() {
                     </label>
                     <button
                       type="button"
-                      onClick={() => showToast('Demo Password is Zeexai@admin')}
-                      className="text-xs font-semibold text-primary hover:underline transition-all"
+                      onClick={() => showToast('Initial setup admin: Z-Hajirii / Admin@Hajirii')}
+                      className="text-xs font-semibold text-primary hover:underline transition-all cursor-pointer"
                     >
-                      Forgot Password?
+                      Default Account Details?
                     </button>
                   </div>
                   <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-outline">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <Lock className="w-5 h-5 text-on-surface-variant" />
                     </div>
                     <input
@@ -2103,11 +3197,11 @@ export default function App() {
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Zeexai@admin"
+                      placeholder="••••••••"
                       className="block w-full pl-10 pr-12 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-sm text-on-surface focus:ring-2 focus:ring-primary-container focus:border-primary outline-none transition-all duration-200"
                     />
                     <button
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-outline hover:text-primary transition-colors"
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                     >
@@ -2116,7 +3210,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Remember Me */}
                 <div className="flex items-center">
                   <input
                     id="remember"
@@ -2125,1708 +3218,3334 @@ export default function App() {
                     onChange={(e) => setRememberMe(e.target.checked)}
                     className="w-4 h-4 text-primary bg-surface-container border-outline-variant rounded focus:ring-primary focus:ring-offset-0"
                   />
-                  <label className="ml-2 text-sm text-on-surface-variant cursor-pointer" htmlFor="remember">
+                  <label className="ml-2 text-sm text-on-surface-variant cursor-pointer select-none" htmlFor="remember">
                     Remember this device
                   </label>
                 </div>
 
-                {/* Login Button */}
                 <button
                   type="submit"
-                  className="w-full bg-primary hover:bg-primary-container active:scale-[0.98] text-on-primary py-3.5 rounded-lg text-sm font-semibold transition-all duration-200 flex justify-center items-center gap-2 shadow-sm"
+                  className="w-full bg-primary hover:bg-primary/90 active:scale-[0.98] text-on-primary py-3 rounded-lg text-sm font-semibold transition-all duration-200 flex justify-center items-center gap-2 shadow-sm cursor-pointer"
                 >
                   <span>Login</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </form>
 
-              {/* Footer Info */}
-              <div className="mt-6 pt-4 border-t border-outline-variant text-center">
+              <div className="mt-6 pt-4 border-t border-outline-variant/30 text-center">
                 <p className="text-xs text-on-surface-variant font-medium">
-                  © 2024 ZEEXAI Technologies. All rights reserved.
+                  © 2026 ZEEXAI Technologies. All rights reserved.
                 </p>
               </div>
-            </div>
-
-            {/* Help Link */}
-            <div className="mt-4 text-center">
-              <a
-                onClick={() => showToast('Please contact ZEEXAI support for manual registration.')}
-                className="inline-flex items-center gap-1 text-xs text-white/80 hover:text-white cursor-pointer transition-colors"
-              >
-                <HelpCircle className="w-4 h-4" />
-                Need assistance with your account?
-              </a>
             </div>
           </main>
         </div>
       ) : (
-        /* LOGGED IN SYSTEM VIEW */
-        <div className="min-h-screen flex flex-col">
-          {/* Header */}
-          <Header
-            searchTerm={searchTerm}
-            onSearchChange={setSearchTerm}
-            onMobileMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)}
-            placeholder={currentTab === 'Users' ? 'Search employees by name, role or ID...' : 'Quick search...'}
+        /* MAIN APPLICATION CANVAS */
+        <div className="min-h-screen flex flex-col bg-surface-container-lowest">
+          <Sidebar
+            currentTab={currentTab}
+            onTabChange={(tab) => {
+              setCurrentTab(tab);
+              setMobileMenuOpen(false);
+            }}
+            onLogout={handleLogout}
+            selectedUserForProfileName={selectedEmployeeForProfile?.name}
+            currentUser={currentUser ? {
+              fullName: currentUser.fullName,
+              role: currentUser.role,
+              designation: currentUser.designation,
+              avatarUrl: employees.find(e => e.id === currentUser.employeeId)?.avatarUrl
+            } : null}
           />
 
-          {/* Core Layout Grid */}
-          <div className="flex-1 flex overflow-hidden">
-            {/* Sidebar Desktop */}
-            <Sidebar
-              currentTab={currentTab}
-              onTabChange={(tab) => {
-                setCurrentTab(tab);
-                setMobileMenuOpen(false);
-              }}
-              onLogout={handleLogout}
-              selectedUserForProfileName={selectedEmployeeForProfile?.name}
-            />
+          <Header
+            onMobileMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)}
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+            placeholder={
+              currentTab === 'UserManagement'
+                ? 'Search users...'
+                : currentTab === 'MyTasks' || currentTab === 'PendingTasks' || currentTab === 'CompletedTasks'
+                ? 'Search tasks...'
+                : 'Search employees...'
+            }
+            notifications={notifications}
+            onMarkRead={handleMarkNotificationRead}
+            onMarkAllRead={handleMarkAllNotificationsRead}
+            onClearNotifications={handleClearNotifications}
+            onSettingsClick={() => setCurrentTab(currentUser?.role === 'Admin' ? 'UserManagement' : 'EmpSettings')}
+            currentUser={currentUser ? {
+              fullName: currentUser.fullName,
+              role: currentUser.role,
+              avatarUrl: employees.find(e => e.id === currentUser.employeeId)?.avatarUrl
+            } : null}
+          />
 
-            {/* Mobile Nav Sidebar Slide-In */}
-            {mobileMenuOpen && (
-              <div className="fixed inset-0 z-50 lg:hidden">
-                <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)}></div>
-                <div className="relative w-64 h-full bg-white flex flex-col p-4 animate-slide-in">
-                  <div className="flex justify-between items-center mb-6">
-                    <div className="flex items-center gap-2">
-                      <img src={logoUrl} alt="Zeex-AI Logo" className="h-10 w-auto object-contain bg-white p-1 rounded border border-outline-variant" />
-                      <div>
-                        <h2 className="text-sm font-bold text-primary">Z-Hajirii</h2>
-                        <p className="text-[9px] text-on-surface-variant">Management System</p>
-                      </div>
-                    </div>
-                    <button onClick={() => setMobileMenuOpen(false)} className="p-1 rounded-full hover:bg-surface-container">
-                      <X className="w-5 h-5 text-primary" />
-                    </button>
-                  </div>
-                  <nav className="flex-1 space-y-2">
-                    {(['Dashboard', 'Attendance', 'Users', 'Reports'] as ViewTab[]).map((tab) => (
+          {/* MOBILE NAVIGATION SIDEBAR DRAWER */}
+          {mobileMenuOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm lg:hidden"
+                onClick={() => setMobileMenuOpen(false)}
+              />
+              <div className="fixed inset-y-0 left-0 w-64 z-50 bg-surface-container-lowest border-r border-outline-variant flex flex-col animate-slide-right lg:hidden">
+                <div className="p-6 border-b border-outline-variant/30 flex justify-between items-center">
+                  <span className="font-bold text-primary">Z-Hajirii Navigation</span>
+                  <button onClick={() => setMobileMenuOpen(false)} className="p-1 hover:bg-surface-container-low rounded-full">
+                    <X className="w-5 h-5 text-on-surface" />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-1">
+                  {currentUser?.role === 'Admin' ? (
+                    <>
                       <button
-                        key={tab}
-                        onClick={() => {
-                          setCurrentTab(tab);
-                          setMobileMenuOpen(false);
-                        }}
-                        className={`w-full px-4 py-3 rounded-lg text-left text-sm font-semibold transition-all ${
-                          currentTab === tab
-                            ? 'bg-primary text-on-primary font-bold'
-                            : 'text-on-surface-variant hover:bg-surface-container-low'
-                        }`}
+                        onClick={() => { setCurrentTab('Dashboard'); setMobileMenuOpen(false); }}
+                        className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg text-left ${currentTab === 'Dashboard' ? 'bg-surface-container-high font-bold text-primary' : 'text-on-surface-variant'}`}
                       >
-                        {tab === 'Reports' && selectedEmployeeForProfile
-                          ? `${selectedEmployeeForProfile.name}'s Profile`
-                          : tab}
+                        Dashboard
                       </button>
-                    ))}
-                  </nav>
-                  <div className="border-t pt-4">
-                    <button
-                      onClick={handleLogout}
-                      className="w-full text-left px-4 py-3 text-sm font-bold text-error hover:bg-error-container/20 rounded-lg flex items-center gap-2"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      Logout
-                    </button>
-                  </div>
+                      <button
+                        onClick={() => { setCurrentTab('Attendance'); setMobileMenuOpen(false); }}
+                        className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg text-left ${currentTab === 'Attendance' ? 'bg-surface-container-high font-bold text-primary' : 'text-on-surface-variant'}`}
+                      >
+                        Attendance
+                      </button>
+                      <button
+                        onClick={() => { setCurrentTab('UserManagement'); setMobileMenuOpen(false); }}
+                        className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg text-left ${currentTab === 'UserManagement' ? 'bg-surface-container-high font-bold text-primary' : 'text-on-surface-variant'}`}
+                      >
+                        User Management
+                      </button>
+                      <button
+                        onClick={() => { setCurrentTab('LeaveManagement'); setMobileMenuOpen(false); }}
+                        className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg text-left ${currentTab === 'LeaveManagement' ? 'bg-surface-container-high font-bold text-primary' : 'text-on-surface-variant'}`}
+                      >
+                        Leave Management
+                      </button>
+                      <button
+                        onClick={() => { setCurrentTab('Reports'); setMobileMenuOpen(false); }}
+                        className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg text-left ${currentTab === 'Reports' ? 'bg-surface-container-high font-bold text-primary' : 'text-on-surface-variant'}`}
+                      >
+                        Reports
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => { setCurrentTab('EmpDashboard'); setMobileMenuOpen(false); }}
+                        className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg text-left ${currentTab === 'EmpDashboard' ? 'bg-surface-container-high font-bold text-primary' : 'text-on-surface-variant'}`}
+                      >
+                        Dashboard
+                      </button>
+                      <button
+                        onClick={() => { setCurrentTab('MyTasks'); setMobileMenuOpen(false); }}
+                        className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg text-left ${currentTab === 'MyTasks' ? 'bg-surface-container-high font-bold text-primary' : 'text-on-surface-variant'}`}
+                      >
+                        My Tasks
+                      </button>
+                      <button
+                        onClick={() => { setCurrentTab('LeaveRequests'); setMobileMenuOpen(false); }}
+                        className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg text-left ${currentTab === 'LeaveRequests' ? 'bg-surface-container-high font-bold text-primary' : 'text-on-surface-variant'}`}
+                      >
+                        Leave Applications
+                      </button>
+                      <button
+                        onClick={() => { setCurrentTab('EmpProfile'); setMobileMenuOpen(false); }}
+                        className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg text-left ${currentTab === 'EmpProfile' ? 'bg-surface-container-high font-bold text-primary' : 'text-on-surface-variant'}`}
+                      >
+                        Profile
+                      </button>
+                      <button
+                        onClick={() => { setCurrentTab('EmpSettings'); setMobileMenuOpen(false); }}
+                        className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg text-left ${currentTab === 'EmpSettings' ? 'bg-surface-container-high font-bold text-primary' : 'text-on-surface-variant'}`}
+                      >
+                        Settings
+                      </button>
+                    </>
+                  )}
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-3 w-full px-4 py-3 rounded-lg text-left text-error hover:bg-error-container/10 mt-8"
+                  >
+                    Logout
+                  </button>
                 </div>
               </div>
-            )}
+            </>
+          )}
 
-            {/* Main scrollable view block */}
-            <div className="flex-1 lg:ml-64 p-4 sm:p-6 pb-24 sm:pb-28 lg:pb-6 overflow-y-auto w-full space-y-6">
-              {loading ? (
-                <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
-                  <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-                  <p className="text-sm font-medium text-on-surface-variant">Syncing database records...</p>
-                </div>
-              ) : (
-                <>
-                  {/* TAB 1: DASHBOARD / ATTENDANCE LIST & CONTROLS */}
-              {currentTab === 'Dashboard' && (
-                <>
-                  {/* Dashboard Header Title & Description Section */}
-                  <section className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                      <h2 className="text-3xl font-bold text-primary tracking-tight">Attendance Dashboard</h2>
-                      <p className="text-sm text-on-surface-variant font-medium">Real-time presence tracking for {dashboardFullDateString}</p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap">
-                      <div className="flex items-center bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 hover:bg-surface-container-low transition-all">
-                        <span className="mr-2 text-primary font-bold text-xs uppercase tracking-wider">Date:</span>
-                        <input
-                          type="date"
-                          value={(() => {
-                            const d = parseDateString(dashboardDate);
-                            const yyyy = d.getFullYear();
-                            const mm = String(d.getMonth() + 1).padStart(2, '0');
-                            const dd = String(d.getDate()).padStart(2, '0');
-                            return `${yyyy}-${mm}-${dd}`;
-                          })()}
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              const [year, month, day] = e.target.value.split('-').map(Number);
-                              const d = new Date(year, month - 1, day);
-                              setDashboardDate(formatDateString(d));
-                            }
-                          }}
-                          className="bg-transparent border-none font-semibold text-sm text-primary focus:outline-none cursor-pointer focus:ring-0 p-0"
-                        />
-                      </div>
-                      <button
-                        onClick={() => showToast('Attendance records archived and saved securely.')}
-                        className="bg-primary text-on-primary px-5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 hover:brightness-110 active:scale-95 transition-all shadow-md"
-                      >
-                        <Check className="w-4 h-4 text-emerald-400" />
-                        <span>Save Records</span>
-                      </button>
-                    </div>
-                  </section>
-
-                  {/* Summary Bento Grid: Dynamically computed counts based on employee modifications */}
-                  <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant custom-shadow flex items-center justify-between">
+          {/* MAIN PAGE CONTAINER */}
+          <main className="flex-1 p-4 sm:p-6 lg:pl-72 space-y-6 overflow-y-auto">
+            {loading ? (
+              <div className="flex-1 flex flex-col items-center justify-center p-20 gap-4 text-primary">
+                <div className="w-12 h-12 rounded-full border-4 border-primary/20 border-t-primary animate-spin"></div>
+                <p className="text-sm font-bold animate-pulse">Syncing with database...</p>
+              </div>
+            ) : (
+              <>
+                {/* 1. ADMIN DASHBOARD */}
+                {currentTab === 'Dashboard' && (
+                  <div className="space-y-6">
+                    {/* Welcome Banner */}
+                    <div className="bg-gradient-to-r from-primary to-primary-container p-6 rounded-2xl text-on-primary shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                       <div>
-                        <p className="text-on-surface-variant font-semibold text-xs uppercase tracking-wider mb-1">Total Employees</p>
-                        <h3 className="text-primary font-bold text-[32px]">{stats.totalEmployees}</h3>
+                        <h1 className="font-bold text-2xl tracking-tight">Admin Control Hub</h1>
+                        <p className="text-xs text-on-primary/80 font-medium mt-1">Real-time attendance logs and operations review</p>
                       </div>
-                      <div className="p-3 bg-primary/10 rounded-full text-primary">
-                        <Briefcase className="w-6 h-6" />
-                      </div>
-                    </div>
-                    
-                    <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant custom-shadow flex items-center justify-between">
-                      <div>
-                        <p className="text-on-surface-variant font-semibold text-xs uppercase tracking-wider mb-1">Present</p>
-                        <h3 className="text-emerald-700 font-bold text-[32px]">{stats.present + stats.late}</h3>
-                      </div>
-                      <div className="p-3 bg-emerald-100 rounded-full text-emerald-700">
-                        <Check className="w-6 h-6" strokeWidth={3} />
+                      <div className="flex items-center gap-3 bg-white/10 px-4 py-2 rounded-xl backdrop-blur-md border border-white/15">
+                        <Calendar className="w-4 h-4 text-white" />
+                        <span className="text-xs font-bold">{todayFullDateString}</span>
                       </div>
                     </div>
 
-                    <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant custom-shadow flex items-center justify-between">
-                      <div>
-                        <p className="text-on-surface-variant font-semibold text-xs uppercase tracking-wider mb-1">Absent</p>
-                        <h3 className="text-error font-bold text-[32px]">{stats.absent}</h3>
+                    {/* Stats Bento Grid */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="bg-surface-container-lowest p-4 rounded-xl border border-outline-variant shadow-sm flex flex-col justify-between">
+                        <span className="text-xs text-on-surface-variant font-bold uppercase tracking-wider">Total Corporate Size</span>
+                        <div className="flex items-baseline gap-2 mt-2">
+                          <span className="text-3xl font-extrabold text-primary">{stats.totalEmployees}</span>
+                          <span className="text-xs text-on-surface-variant font-medium">staff</span>
+                        </div>
                       </div>
-                      <div className="p-3 bg-error-container rounded-full text-error">
-                        <X className="w-6 h-6" strokeWidth={3} />
+
+                      <div className="bg-surface-container-lowest p-4 rounded-xl border border-outline-variant shadow-sm flex flex-col justify-between">
+                        <span className="text-xs text-on-surface-variant font-bold uppercase tracking-wider">Present Today</span>
+                        <div className="flex items-baseline gap-2 mt-2">
+                          <span className="text-3xl font-extrabold text-emerald-600">{stats.present}</span>
+                          <span className="text-xs text-on-surface-variant font-medium">active</span>
+                        </div>
+                      </div>
+
+                      <div className="bg-surface-container-lowest p-4 rounded-xl border border-outline-variant shadow-sm flex flex-col justify-between">
+                        <span className="text-xs text-on-surface-variant font-bold uppercase tracking-wider">Late arrivals</span>
+                        <div className="flex items-baseline gap-2 mt-2">
+                          <span className="text-3xl font-extrabold text-amber-500">{stats.late}</span>
+                          <span className="text-xs text-on-surface-variant font-medium">delayed</span>
+                        </div>
+                      </div>
+
+                      <div className="bg-surface-container-lowest p-4 rounded-xl border border-outline-variant shadow-sm flex flex-col justify-between">
+                        <span className="text-xs text-on-surface-variant font-bold uppercase tracking-wider">Absent today</span>
+                        <div className="flex items-baseline gap-2 mt-2">
+                          <span className="text-3xl font-extrabold text-error">{stats.absent}</span>
+                          <span className="text-xs text-on-surface-variant font-medium">inactive</span>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant custom-shadow flex items-center justify-between">
-                      <div>
-                        <p className="text-on-surface-variant font-semibold text-xs uppercase tracking-wider mb-1">Late</p>
-                        <h3 className="text-amber-600 font-bold text-[32px]">{stats.late}</h3>
+                    {/* Quick overview of logs today */}
+                    <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                        <div>
+                          <h2 className="font-bold text-lg text-primary">Today's Presence Review</h2>
+                          <p className="text-xs text-on-surface-variant font-medium">Quick indicators and overrides for {dashboardFullDateString}</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input
+                            type="date"
+                            value={dashboardDate.includes(',') ? new Date().toISOString().split('T')[0] : new Date(dashboardDate).toISOString().split('T')[0]}
+                            onChange={(e) => {
+                              const parsed = new Date(e.target.value);
+                              if (!isNaN(parsed.getTime())) {
+                                setDashboardDate(formatDateString(parsed));
+                              }
+                            }}
+                            className="bg-surface-container-low border border-outline-variant rounded-full px-3.5 py-1.5 text-xs text-on-surface focus:outline-none"
+                          />
+                        </div>
                       </div>
-                      <div className="p-3 bg-amber-100 rounded-full text-amber-600">
-                        <Clock className="w-6 h-6" />
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm border-collapse">
+                          <thead>
+                            <tr className="border-b border-outline-variant/40 bg-surface-container-low/20">
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Employee</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Designation</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Status</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">In/Out Times</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-outline-variant/20">
+                            {employees.map(emp => {
+                              const log = attendanceLogs.find(l => l.employeeId === emp.id && l.date === dashboardDate);
+                              const status = log ? log.status : 'Absent';
+                              const inTime = log ? log.clockIn : '--:--';
+                              const outTime = log ? log.clockOut : '--:--';
+
+                              return (
+                                <tr key={emp.id} className="hover:bg-primary/5 transition-colors">
+                                  <td className="py-3 px-4">
+                                    <div className="flex items-center gap-3">
+                                      <img src={emp.avatarUrl} alt={emp.name} className="w-8 h-8 rounded-full object-cover border border-outline-variant" />
+                                      <div>
+                                        <p className="font-bold text-sm text-primary">{emp.name}</p>
+                                        <p className="text-[11px] text-on-surface-variant">{emp.empId}</p>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4 text-xs font-semibold text-on-surface-variant">{emp.role}</td>
+                                  <td className="py-3 px-4">
+                                    <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                                      status === 'Present'
+                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                        : status === 'Late'
+                                        ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                        : 'bg-red-50 text-red-700 border border-red-200'
+                                    }`}>
+                                      <span className={`w-1.5 h-1.5 rounded-full ${
+                                        status === 'Present' ? 'bg-emerald-500' : status === 'Late' ? 'bg-amber-500' : 'bg-red-500'
+                                      }`}></span>
+                                      {status}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-4 text-xs font-medium">
+                                    <div className="flex flex-col gap-0.5">
+                                      <span>In: <strong className="text-primary">{inTime}</strong></span>
+                                      <span>Out: <strong className="text-primary">{outTime}</strong></span>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      {status === 'Absent' ? (
+                                        <button
+                                          onClick={() => handleUpdateStatus(emp.id, 'Present', dashboardDate)}
+                                          className="px-2 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded text-[11px] font-bold transition-all border border-emerald-200/50 cursor-pointer"
+                                        >
+                                          Present
+                                        </button>
+                                      ) : (
+                                        <>
+                                          {outTime === '--:--' && (
+                                            <button
+                                              onClick={() => handleClockOut(emp.id, dashboardDate)}
+                                              className="px-2 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded text-[11px] font-bold transition-all border border-amber-200/50 cursor-pointer"
+                                            >
+                                              Clock Out
+                                            </button>
+                                          )}
+                                          <button
+                                            onClick={() => handleUpdateStatus(emp.id, 'Absent', dashboardDate)}
+                                            className="px-2 py-1 bg-red-50 text-red-700 hover:bg-red-100 rounded text-[11px] font-bold transition-all border border-red-200/50 cursor-pointer"
+                                          >
+                                            Absent
+                                          </button>
+                                        </>
+                                      )}
+                                      <button
+                                        onClick={() => handleViewEmployeeProfile(emp)}
+                                        className="px-2 py-1 bg-primary/5 text-primary hover:bg-primary/10 rounded text-[11px] font-bold transition-all border border-primary/10 cursor-pointer"
+                                      >
+                                        Profile
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
-                  </section>
 
-                  {/* Main Attendance Logging Interactive Table */}
-                  <section className="bg-surface-container-lowest rounded-xl border border-outline-variant custom-shadow overflow-hidden">
-                    <div className="p-6 border-b border-outline-variant flex justify-between items-center flex-wrap gap-4 bg-white">
-                      <h4 className="text-lg font-bold text-primary">Attendance Log</h4>
-                      <div className="flex gap-2">
+                    {/* Team Leader Task Control Section */}
+                    <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-4">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-outline-variant/20 pb-4">
+                        <div>
+                          <h2 className="font-bold text-lg text-primary">Team Leader Task Management</h2>
+                          <p className="text-xs text-on-surface-variant font-medium">Assign corporate goals and check status of tasks assigned to Team Leaders.</p>
+                        </div>
                         <button
                           onClick={() => {
-                            setSearchTerm('');
-                            showToast('Search filters cleared');
+                            setNewTaskTitle('');
+                            setNewTaskDesc('');
+                            setNewTaskPriority('Medium');
+                            setNewTaskDeadline(new Date().toISOString().split('T')[0]);
+                            setNewTaskAttachment('');
+                            const tl = users.find(u => u.role === 'Team Leader' && u.status === 'Active');
+                            setNewTaskAssigneeId(tl ? tl.id : '');
+                            setIsAddTaskModalOpen(true);
                           }}
-                          className="flex items-center gap-1 text-xs font-semibold text-on-surface-variant px-3 py-1.5 border border-outline-variant rounded-full hover:bg-surface-container"
+                          className="inline-flex items-center gap-1.5 bg-primary hover:bg-primary/90 text-on-primary px-4 py-2 rounded-full text-xs font-semibold shadow-sm transition-all cursor-pointer"
                         >
-                          <Filter className="w-3.5 h-3.5" /> Clear Filters
-                        </button>
-                        <button
-                          onClick={() => showToast('Exporting attendance logs as CSV file...')}
-                          className="flex items-center gap-1 text-xs font-semibold text-on-surface-variant px-3 py-1.5 border border-outline-variant rounded-full hover:bg-surface-container"
-                        >
-                          <Download className="w-3.5 h-3.5" /> Export Logs
+                          <Plus className="w-4 h-4" />
+                          Assign Goal to TL
                         </button>
                       </div>
-                    </div>
 
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="bg-surface-container-low text-on-surface-variant font-semibold text-xs uppercase tracking-wider">
-                            <th className="px-6 py-3.5">Name</th>
-                            <th className="px-6 py-3.5">Role</th>
-                            <th className="px-6 py-3.5">Email</th>
-                            <th className="px-6 py-3.5 text-center">Attendance Status</th>
-                            <th className="px-6 py-3.5 text-center">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-outline-variant/50">
-                          {filteredEmployees.map((emp) => {
-                             // Find log for dashboardDate
-                             const log = attendanceLogs.find(l => l.employeeId === emp.id && l.date === dashboardDate);
-                            const status = log ? log.status : 'Absent'; // default un-logged as Absent
-                            
-                            return (
-                              <tr key={emp.id} className="hover:bg-surface-container-low transition-colors duration-150 group">
-                                <td className="px-6 py-4 flex items-center gap-3">
-                                  <img
-                                    className="w-10 h-10 rounded-full object-cover border border-outline-variant"
-                                    src={emp.avatarUrl}
-                                    alt={emp.name}
-                                  />
-                                  <div>
-                                    <span className="block font-semibold text-sm text-primary">{emp.name}</span>
-                                    <span className="text-[11px] text-on-surface-variant">{emp.empId}</span>
-                                  </div>
-                                </td>
-                                <td className="px-6 py-4 text-sm text-on-surface-variant font-medium">{emp.role}</td>
-                                <td className="px-6 py-4 text-sm text-on-surface-variant font-normal">{emp.email}</td>
-                                <td className="px-6 py-4 text-center">
-                                  {status === 'Present' && (
-                                    <span className="px-4 py-1.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-semibold inline-flex items-center gap-1 select-none">
-                                      <Check className="w-3.5 h-3.5 text-emerald-600" /> Present
-                                    </span>
-                                  )}
-                                  {status === 'Absent' && (
-                                    <span className="px-4 py-1.5 rounded-full bg-error-container/40 text-error border border-error-container text-xs font-semibold inline-flex items-center gap-1 select-none">
-                                      <X className="w-3.5 h-3.5 text-error" /> Absent
-                                    </span>
-                                  )}
-                                  {status === 'Late' && (
-                                    <div className="flex flex-col items-center gap-1 select-none">
-                                      <span className="px-4 py-1.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 text-xs font-semibold inline-flex items-center gap-1">
-                                        <Clock className="w-3.5 h-3.5 text-amber-600" /> Late
-                                      </span>
-                                      {log?.clockIn && calculateMinutesLate(log.clockIn) > 0 && (
-                                        <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/50 whitespace-nowrap">
-                                          Late by {calculateMinutesLate(log.clockIn)} mins
-                                        </span>
-                                      )}
-                                    </div>
-                                  )}
-                                </td>
-                                <td className="px-6 py-4 text-center">
-                                  <div className="flex items-center justify-center gap-2">
-                                    <button
-                                      title="Mark Present"
-                                      onClick={() => handleUpdateStatus(emp.id, 'Present', dashboardDate)}
-                                      className={`p-1.5 rounded-full border transition-all ${
-                                        status === 'Present'
-                                          ? 'bg-emerald-600 text-white border-emerald-600'
-                                          : 'border-outline-variant text-on-surface-variant hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-700'
-                                      }`}
-                                    >
-                                      <Check className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                      title="Mark Absent"
-                                      onClick={() => handleUpdateStatus(emp.id, 'Absent', dashboardDate)}
-                                      className={`p-1.5 rounded-full border transition-all ${
-                                        status === 'Absent'
-                                          ? 'bg-error text-white border-error'
-                                          : 'border-outline-variant text-on-surface-variant hover:bg-red-50 hover:text-error hover:border-error'
-                                      }`}
-                                    >
-                                      <X className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                      title="Mark Late"
-                                      onClick={() => handleUpdateStatus(emp.id, 'Late', dashboardDate)}
-                                      className={`p-1.5 rounded-full border transition-all ${
-                                        status === 'Late'
-                                          ? 'bg-amber-600 text-white border-amber-600'
-                                          : 'border-outline-variant text-on-surface-variant hover:bg-amber-50 hover:text-amber-600 hover:border-amber-600'
-                                      }`}
-                                    >
-                                      <Clock className="w-4 h-4" />
-                                    </button>
-
-                                    {log && (
-                                      <button
-                                        title="Delete Attendance"
-                                        onClick={() => handleDeleteAttendance(log.id)}
-                                        className="p-1.5 rounded-full border border-outline-variant text-error hover:bg-error-container/20 hover:border-error transition-all"
-                                      >
-                                        <Trash2 className="w-4 h-4" />
-                                      </button>
-                                    )}
-
-                                    <button
-                                      title="View Detailed Logs"
-                                      onClick={() => handleViewEmployeeProfile(emp)}
-                                      className="ml-2 p-1.5 text-xs text-primary font-semibold hover:underline flex items-center gap-1 hover:text-primary-container"
-                                    >
-                                      <ExternalLink className="w-3 h-3" /> Profile
-                                    </button>
-                                  </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="border-b border-outline-variant/30 bg-surface-container-low/20">
+                              <th className="py-2.5 px-3 font-bold text-on-surface-variant uppercase tracking-wider">Team Leader</th>
+                              <th className="py-2.5 px-3 font-bold text-on-surface-variant uppercase tracking-wider">Assigned Task / Goal</th>
+                              <th className="py-2.5 px-3 font-bold text-on-surface-variant uppercase tracking-wider">Priority</th>
+                              <th className="py-2.5 px-3 font-bold text-on-surface-variant uppercase tracking-wider">Deadline</th>
+                              <th className="py-2.5 px-3 font-bold text-on-surface-variant uppercase tracking-wider">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-outline-variant/20">
+                            {users.filter(u => u.role === 'Team Leader').length === 0 ? (
+                              <tr>
+                                <td colSpan={5} className="py-6 text-center text-on-surface-variant/70 font-medium">
+                                  No Team Leaders registered yet. Promote an intern from the <strong className="text-primary hover:underline cursor-pointer" onClick={() => setCurrentTab('UserManagement')}>User Management</strong> section.
                                 </td>
                               </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <div className="p-6 bg-surface-container-low border-t border-outline-variant flex justify-between items-center">
-                      <p className="text-sm font-semibold text-on-surface-variant">Showing {filteredEmployees.length} of {employees.length} employees</p>
-                      <div className="flex gap-2">
-                        <button className="w-8 h-8 flex items-center justify-center rounded-lg border border-outline-variant text-on-surface-variant opacity-50 cursor-not-allowed">
-                          <ChevronLeft className="w-4 h-4" />
-                        </button>
-                        <button className="w-8 h-8 flex items-center justify-center rounded-lg bg-primary text-on-primary font-semibold text-sm">1</button>
-                        <button className="w-8 h-8 flex items-center justify-center rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container">2</button>
-                        <button className="w-8 h-8 flex items-center justify-center rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container">
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  </section>
-                </>
-              )}
-
-              {/* TAB 2: ATTENDANCE LOG LOGICAL GRID VIEW */}
-              {currentTab === 'Attendance' && (
-                <>
-                  <section className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                      <h2 className="text-3xl font-bold text-primary tracking-tight">Active Attendance Dashboard</h2>
-                      <p className="text-sm text-on-surface-variant font-medium">Configure daily shifts, watch clock-ins, and override permissions.</p>
-                    </div>
-                    <div className="flex flex-wrap gap-3">
-                      <button
-                        onClick={() => setIsExportModalOpen(true)}
-                        className="bg-primary hover:brightness-110 active:scale-[0.98] text-on-primary px-5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all shadow-md cursor-pointer"
-                      >
-                        <Download className="w-4 h-4 text-emerald-400" />
-                        <span>Export Report</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          // Mark all employees present as quick-run tool
-                          employees.forEach(emp => {
-                            handleUpdateStatus(emp.id, 'Present', selectedAttendanceDate);
-                          });
-                          showToast(`All users marked Present for ${selectedAttendanceDate}.`);
-                        }}
-                        className="bg-emerald-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 hover:bg-emerald-700 active:scale-95 transition-all shadow-md cursor-pointer"
-                      >
-                        <Check className="w-4 h-4" />
-                        <span>Auto-Checkin All</span>
-                      </button>
-                    </div>
-                  </section>
-
-                  {/* Attendance Filter Bar */}
-                  <div className="bg-surface-container-lowest rounded-xl p-4 custom-shadow flex flex-wrap gap-4 items-center border border-outline-variant/30">
-                    <div className="flex-1 min-w-[240px] relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant w-4 h-4" />
-                      <input
-                        type="text"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 bg-background border border-outline-variant rounded-lg focus:ring-2 focus:ring-primary-container focus:border-primary outline-none text-sm transition-all"
-                        placeholder="Search by name, role or ID..."
-                      />
-                    </div>
-                    
-                    <div className="flex items-center gap-2 relative">
-                      <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Date:</span>
-                      <button
-                        type="button"
-                        onClick={() => setIsCalendarOpen(!isCalendarOpen)}
-                        className="bg-background border border-outline-variant rounded-lg px-4 py-2 text-sm font-semibold hover:bg-surface-container-low transition-colors flex items-center gap-2 cursor-pointer shadow-sm min-w-[130px]"
-                      >
-                        <Calendar className="w-4 h-4 text-primary" />
-                        <span>{selectedAttendanceDate}</span>
-                      </button>
-
-                      {isCalendarOpen && (
-                        <>
-                          <div 
-                            className="fixed inset-0 z-40 bg-transparent"
-                            onClick={() => setIsCalendarOpen(false)}
-                          />
-
-                          <div className="absolute top-full right-0 mt-2 z-50 bg-white rounded-xl border border-outline-variant p-4 shadow-xl w-[320px] animate-bounce-short text-on-surface">
-                            <div className="flex items-center justify-between gap-2 mb-3">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setCalendarViewDate(new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth() - 1, 1));
-                                }}
-                                className="p-1 hover:bg-surface-container rounded-full text-on-surface-variant cursor-pointer active:scale-95 transition-transform"
-                              >
-                                <ChevronLeft className="w-5 h-5" />
-                              </button>
-
-                              <div className="flex items-center gap-1">
-                                <select
-                                  value={calendarViewDate.getMonth()}
-                                  onChange={(e) => {
-                                    setCalendarViewDate(new Date(calendarViewDate.getFullYear(), parseInt(e.target.value, 10), 1));
-                                  }}
-                                  className="bg-surface-container border border-outline-variant rounded px-2 py-1 text-xs font-bold focus:outline-none cursor-pointer"
-                                >
-                                  {MONTHS.map((m, idx) => (
-                                    <option key={m} value={idx}>{m}</option>
-                                  ))}
-                                </select>
-
-                                <select
-                                  value={calendarViewDate.getFullYear()}
-                                  onChange={(e) => {
-                                    setCalendarViewDate(new Date(parseInt(e.target.value, 10), calendarViewDate.getMonth(), 1));
-                                  }}
-                                  className="bg-surface-container border border-outline-variant rounded px-2 py-1 text-xs font-bold focus:outline-none cursor-pointer"
-                                >
-                                  {Array.from({ length: 21 }, (_, i) => 2020 + i).map((y) => (
-                                    <option key={y} value={y}>{y}</option>
-                                  ))}
-                                </select>
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setCalendarViewDate(new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth() + 1, 1));
-                                }}
-                                className="p-1 hover:bg-surface-container rounded-full text-on-surface-variant cursor-pointer active:scale-95 transition-transform"
-                              >
-                                <ChevronRight className="w-5 h-5" />
-                              </button>
-                            </div>
-
-                            <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-2">
-                              <div>Su</div>
-                              <div>Mo</div>
-                              <div>Tu</div>
-                              <div>We</div>
-                              <div>Th</div>
-                              <div>Fr</div>
-                              <div>Sa</div>
-                            </div>
-
-                            <div className="grid grid-cols-7 gap-1 text-center">
-                              {calendarDays.map((cell, cellIdx) => {
-                                const cellDateObj = new Date(cell.year, cell.month, cell.day);
-                                const formattedCellDate = formatDateString(cellDateObj);
-                                const isSelected = formattedCellDate === selectedAttendanceDate;
-                                const isToday = formatDateString(new Date()) === formattedCellDate;
-
+                            ) : (
+                              users.filter(u => u.role === 'Team Leader').map(tl => {
+                                const tlTasks = tasks.filter(t => t.userId === tl.id);
                                 return (
-                                  <button
-                                    key={cellIdx}
-                                    type="button"
-                                    onClick={() => {
-                                      setSelectedAttendanceDate(formattedCellDate);
-                                      setIsCalendarOpen(false);
-                                    }}
-                                    className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-semibold active:scale-90 transition-all cursor-pointer select-none ${
-                                      isSelected
-                                        ? 'bg-primary text-on-primary font-bold shadow-md shadow-primary/20'
-                                        : !cell.isCurrentMonth
-                                        ? 'text-outline/40 hover:bg-surface-container-low'
-                                        : isToday
-                                        ? 'border-2 border-primary text-primary font-bold hover:bg-primary/5'
-                                        : 'text-on-surface hover:bg-surface-container'
-                                    }`}
-                                  >
-                                    {cell.day}
-                                  </button>
-                                );
-                              })}
-                            </div>
-
-                            <div className="mt-3 pt-2 border-t flex justify-end">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const todayFormatted = formatDateString(new Date());
-                                  setSelectedAttendanceDate(todayFormatted);
-                                  setIsCalendarOpen(false);
-                                }}
-                                className="px-3 py-1 bg-primary/10 text-primary hover:bg-primary/20 text-[11px] font-bold rounded-lg cursor-pointer transition-colors"
-                              >
-                                Jump to Today
-                              </button>
-                            </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Status:</span>
-                      <select
-                        value={attendanceStatusFilter}
-                        onChange={(e) => setAttendanceStatusFilter(e.target.value)}
-                        className="bg-background border border-outline-variant rounded-lg px-4 py-2 text-sm font-semibold focus:ring-primary-container outline-none"
-                      >
-                        <option value="All Statuses">All Statuses</option>
-                        <option value="Present">Present</option>
-                        <option value="Late">Late</option>
-                        <option value="Absent">Absent</option>
-                      </select>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        setSearchTerm('');
-                        setSelectedAttendanceDate(todayDateString);
-                        setAttendanceStatusFilter('All Statuses');
-                        showToast('Attendance filters reset.');
-                      }}
-                      className="flex items-center gap-2 px-4 py-2 border border-outline-variant rounded-lg hover:bg-surface-container-low transition-colors font-medium text-sm"
-                    >
-                      <Filter className="w-4 h-4 text-on-surface-variant" />
-                      <span>Reset</span>
-                    </button>
-                  </div>
-
-                  {/* Interactive Status Log Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredAttendanceEmployees.map((emp) => {
-                      const log = attendanceLogs.find(l => l.employeeId === emp.id && l.date === selectedAttendanceDate);
-                      const status = log ? log.status : 'Absent';
-
-                      return (
-                        <div key={emp.id} className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant custom-shadow flex flex-col justify-between space-y-4">
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-center gap-3">
-                              <img src={emp.avatarUrl} alt={emp.name} className="w-12 h-12 rounded-full object-cover" />
-                              <div>
-                                <h4 className="font-bold text-primary">{emp.name}</h4>
-                                <div className="flex flex-wrap gap-1 mt-0.5">
-                                  {emp.role.split(',').map(r => (
-                                    <span key={r} className="text-[10px] font-semibold bg-surface-container text-on-surface-variant px-1.5 py-0.5 rounded">
-                                      {r.trim()}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="flex flex-col items-end gap-1">
-                                <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
-                                  status === 'Present' ? 'bg-emerald-100 text-emerald-800' :
-                                  status === 'Late' ? 'bg-amber-100 text-amber-800' :
-                                  'bg-error-container/40 text-error'
-                                }`}>
-                                  {status}
-                                </span>
-                                {status === 'Late' && log?.clockIn && calculateMinutesLate(log.clockIn) > 0 && (
-                                  <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/50 whitespace-nowrap">
-                                    Late by {calculateMinutesLate(log.clockIn)} mins
-                                  </span>
-                                )}
-                              </div>
-                              {log && (
-                                <button
-                                  title="Delete Attendance Log"
-                                  onClick={() => handleDeleteAttendance(log.id)}
-                                  className="p-1 text-error hover:bg-error-container/20 rounded-md transition-colors"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2 bg-surface-container-low p-3 rounded-lg text-xs">
-                            <div>
-                              <span className="text-on-surface-variant block uppercase tracking-wider text-[9px] font-bold">Clock In:</span>
-                              <span className="font-bold text-primary">{log?.clockIn || '--:--'}</span>
-                            </div>
-                            <div>
-                              <span className="text-on-surface-variant block uppercase tracking-wider text-[9px] font-bold">Clock Out:</span>
-                              {log && (status === 'Present' || status === 'Late') && (log.clockOut === '--:--' || !log.clockOut) ? (
-                                <button
-                                  onClick={() => handleClockOut(emp.id, selectedAttendanceDate)}
-                                  className="mt-1 px-2.5 py-1 bg-primary text-on-primary font-bold text-[10px] rounded-md hover:brightness-110 active:scale-95 transition-all cursor-pointer shadow-sm"
-                                >
-                                  Clock Out
-                                </button>
-                              ) : (
-                                <span className="font-bold text-primary">{log?.clockOut || '--:--'}</span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="flex justify-between items-center gap-2 pt-2 border-t">
-                            <span className="text-[11px] font-bold text-on-surface-variant">Update Status:</span>
-                            <div className="flex gap-1.5">
-                              <button
-                                onClick={() => handleUpdateStatus(emp.id, 'Present', selectedAttendanceDate)}
-                                className="px-2.5 py-1 bg-emerald-600 text-white text-[11px] font-bold rounded-lg hover:brightness-110"
-                              >
-                                Present
-                              </button>
-                              <button
-                                onClick={() => handleUpdateStatus(emp.id, 'Late', selectedAttendanceDate)}
-                                className="px-2.5 py-1 bg-amber-600 text-white text-[11px] font-bold rounded-lg hover:brightness-110"
-                              >
-                                Late
-                              </button>
-                              <button
-                                onClick={() => handleUpdateStatus(emp.id, 'Absent', selectedAttendanceDate)}
-                                className="px-2.5 py-1 bg-error text-white text-[11px] font-bold rounded-lg hover:brightness-110"
-                              >
-                                Absent
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-
-              {/* TAB 3: USER MANAGEMENT VIEW CHIPS & ADD ACTIONS */}
-              {currentTab === 'Users' && (
-                <>
-                  <section className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                      <h2 className="text-3xl font-bold text-primary tracking-tight">User Management</h2>
-                      <p className="text-sm text-on-surface-variant font-medium">Configure and monitor system access for {employees.length} active employees.</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setEditingEmployee(null);
-                        setNewEmpName('');
-                        setSelectedRoles(['Software Engineer']);
-                        setNewEmpEmail('');
-                        setNewEmpId('');
-                        setNewEmpAvatar('');
-                        setIsCreateModalOpen(true);
-                      }}
-                      className="bg-primary text-on-primary px-5 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 hover:brightness-110 active:scale-95 transition-all shadow-md"
-                    >
-                      <UserPlus className="w-5 h-5" />
-                      <span>Create New User</span>
-                    </button>
-                  </section>
-
-                  {/* Filter & Search Bar */}
-                  <div className="bg-surface-container-lowest rounded-xl p-4 custom-shadow flex flex-wrap gap-4 items-center border border-outline-variant/30">
-                    <div className="flex-1 min-w-[280px] relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant w-4 h-4" />
-                      <input
-                        type="text"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 bg-background border border-outline-variant rounded-lg focus:ring-2 focus:ring-primary-container focus:border-primary outline-none text-sm transition-all"
-                        placeholder="Search by name, email or ID..."
-                      />
-                    </div>
-                    
-                    <div className="flex gap-2 w-full md:w-auto justify-between md:justify-end">
-                      <select
-                        value={roleFilter}
-                        onChange={(e) => setRoleFilter(e.target.value)}
-                        className="bg-background border border-outline-variant rounded-lg px-4 py-2 text-sm font-semibold focus:ring-primary-container outline-none"
-                      >
-                        {uniqueRoles.map((role) => (
-                          <option key={role} value={role}>{role}</option>
-                        ))}
-                      </select>
-                      
-                      <button
-                        onClick={() => {
-                          setSearchTerm('');
-                          setRoleFilter('All Roles');
-                          showToast('Filters reset to default.');
-                        }}
-                        className="flex items-center gap-2 px-4 py-2 border border-outline-variant rounded-lg hover:bg-surface-container-low transition-colors font-medium text-sm"
-                      >
-                        <Filter className="w-4 h-4 text-on-surface-variant" />
-                        <span>Reset</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Grid Cards of Users with full actions */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-12">
-                    {filteredEmployees.map((emp) => (
-                      <div
-                        key={emp.id}
-                        className="bg-surface-container-lowest rounded-xl p-6 custom-shadow border border-outline-variant/20 hover:border-primary/30 transition-all group relative overflow-hidden"
-                      >
-                        {/* Quick Hover Delete / Edit Controls */}
-                        <div className="absolute top-2 right-2 p-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                          <button
-                            title="Edit User Info"
-                            onClick={() => {
-                              setEditingEmployee(emp);
-                              setNewEmpName(emp.name);
-                              setNewEmpId(emp.empId);
-                              setNewEmpEmail(emp.email);
-                              setSelectedRoles(emp.role.split(',').map(r => r.trim()));
-                              setNewEmpAvatar(emp.avatarUrl);
-                              setIsCreateModalOpen(true);
-                            }}
-                            className="p-2 bg-surface-container-high rounded-lg text-primary hover:bg-primary hover:text-on-primary transition-all"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            title="Remove User"
-                            onClick={() => handleDeleteEmployee(emp.id, emp.name)}
-                            className="p-2 bg-error-container rounded-lg text-error hover:bg-error hover:text-on-error transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-
-                        <div className="flex flex-col items-center text-center">
-                          <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-primary-container p-1 mb-4">
-                            <img src={emp.avatarUrl} alt={emp.name} className="w-full h-full object-cover rounded-full" />
-                          </div>
-                          
-                          <h3 className="font-bold text-lg text-on-surface mb-1">{emp.name}</h3>
-                          
-                          <div className="flex flex-wrap gap-1.5 justify-center mb-3">
-                            {emp.role.split(',').map((r) => (
-                              <span key={r} className="bg-primary/10 text-primary px-2.5 py-0.5 rounded-full text-[10px] font-bold">
-                                {r.trim()}
-                              </span>
-                            ))}
-                          </div>
-
-                          <div className="flex items-center gap-2 text-on-surface-variant text-xs truncate w-full justify-center">
-                            <span className="text-on-surface-variant">✉</span>
-                            <span className="truncate">{emp.email}</span>
-                          </div>
-
-                          <div className="mt-2 text-[11px] text-on-surface-variant font-mono">
-                            ID: {emp.empId}
-                          </div>
-                        </div>
-
-                        <div className="mt-6 pt-4 border-t border-outline-variant-low flex justify-between items-center">
-                          <button
-                            onClick={() => handleViewEmployeeProfile(emp)}
-                            className="text-xs font-semibold text-primary hover:underline"
-                          >
-                            View Analytics
-                          </button>
-                          <div className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                            <span className="text-xs text-on-surface-variant">Active Now</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-
-              {/* TAB 4: DETAILED PROFILE REPORT AND PERSONAL TRENDS */}
-              {currentTab === 'Reports' && selectedEmployeeForProfile && (
-                <>
-                  {/* Detailed User Profile Header */}
-                  <section className="bg-surface-container-lowest custom-shadow rounded-xl p-8 flex flex-col md:flex-row items-center gap-6">
-                    <div className="relative">
-                      <div className="h-32 w-32 rounded-full ring-4 ring-primary/10 overflow-hidden">
-                        <img
-                          src={selectedEmployeeForProfile.avatarUrl}
-                          alt={selectedEmployeeForProfile.name}
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
-                      <input
-                        type="file"
-                        id="profile-avatar-upload"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (file && selectedEmployeeForProfile) {
-                            const reader = new FileReader();
-                            reader.onloadend = async () => {
-                              const base64Url = reader.result as string;
-                              try {
-                                const { error } = await supabase
-                                  .from('employees')
-                                  .update({ avatar_url: base64Url })
-                                  .eq('id', selectedEmployeeForProfile.id);
-                                if (error) throw error;
-                                
-                                setSelectedEmployeeForProfile(prev => prev ? { ...prev, avatarUrl: base64Url } : null);
-                                showToast('Profile image uploaded successfully.');
-                                await fetchData();
-                              } catch (err) {
-                                console.error(err);
-                                showToast('Failed to upload profile image.');
-                              }
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                      <button
-                        onClick={async () => {
-                          if (!selectedEmployeeForProfile) return;
-                          const choice = window.confirm("Click 'OK' to upload a photo from your device, or 'Cancel' to enter an image URL instead.");
-                          if (choice) {
-                            document.getElementById('profile-avatar-upload')?.click();
-                          } else {
-                            const newUrl = prompt('Enter image URL for avatar:', selectedEmployeeForProfile.avatarUrl);
-                            if (newUrl) {
-                              try {
-                                const { error } = await supabase
-                                  .from('employees')
-                                  .update({ avatar_url: newUrl })
-                                  .eq('id', selectedEmployeeForProfile.id);
-                                if (error) throw error;
-                                
-                                setSelectedEmployeeForProfile(prev => prev ? { ...prev, avatarUrl: newUrl } : null);
-                                showToast('Profile image updated successfully.');
-                                await fetchData();
-                              } catch (err) {
-                                console.error(err);
-                                showToast('Failed to update profile image in database.');
-                              }
-                            }
-                          }
-                        }}
-                        className="absolute bottom-0 right-0 bg-primary text-on-primary rounded-full p-2 shadow-lg active:scale-95 transition-transform cursor-pointer"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-
-                    <div className="text-center md:text-left space-y-1">
-                      <h2 className="text-3xl font-bold text-primary tracking-tight">{selectedEmployeeForProfile.name}</h2>
-                      <p className="text-lg text-secondary font-semibold">{selectedEmployeeForProfile.role}</p>
-                      <div className="flex flex-wrap justify-center md:justify-start gap-4 mt-2">
-                        <span className="flex items-center gap-1 text-sm text-on-surface-variant">
-                          <span>✉</span>
-                          <span>{selectedEmployeeForProfile.email}</span>
-                        </span>
-                        <span className="flex items-center gap-1 text-sm text-on-surface-variant">
-                          <span>ID:</span>
-                          <span>{selectedEmployeeForProfile.empId}</span>
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="md:ml-auto flex gap-3 flex-wrap">
-                      <button
-                        onClick={() => setIsProfileExportModalOpen(true)}
-                        className="px-6 py-2 border border-primary text-primary font-semibold text-sm rounded-lg hover:bg-primary/5 transition-colors cursor-pointer"
-                      >
-                        Export Profile
-                      </button>
-                      <button
-                        onClick={() => showToast(`Generated comprehensive monthly report for ${selectedEmployeeForProfile.name}.`)}
-                        className="px-6 py-2 bg-primary text-on-primary font-semibold text-sm rounded-lg hover:brightness-110 transition-all"
-                      >
-                        Generate Report
-                      </button>
-                    </div>
-                  </section>
-
-                  {/* Summary Bento Stats */}
-                  <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <div className="bg-surface-container-lowest custom-shadow rounded-xl p-6 flex items-center gap-4">
-                      <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
-                        <Check className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Present Days</p>
-                        <p className="text-2xl font-bold">{profileStats.present + profileStats.late}</p>
-                      </div>
-                    </div>
-
-                    <div className="bg-surface-container-lowest custom-shadow rounded-xl p-6 flex items-center gap-4">
-                      <div className="p-3 bg-red-50 text-error rounded-lg">
-                        <X className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Absent Days</p>
-                        <p className="text-2xl font-bold">{profileStats.absent}</p>
-                      </div>
-                    </div>
-
-                    <div className="bg-surface-container-lowest custom-shadow rounded-xl p-6 flex items-center gap-4">
-                      <div className="p-3 bg-amber-50 text-amber-600 rounded-lg">
-                        <Clock className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Late Days</p>
-                        <p className="text-2xl font-bold">{profileStats.late}</p>
-                      </div>
-                    </div>
-
-                    <div className="bg-surface-container-lowest custom-shadow rounded-xl p-6 flex items-center gap-4 border-l-4 border-primary">
-                      <div className="flex-1">
-                        <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Attendance Rate</p>
-                        <p className="text-2xl font-bold text-primary">{profileStats.rate}</p>
-                      </div>
-                      <div className="relative h-12 w-12 shrink-0">
-                        <svg className="h-full w-full" viewBox="0 0 36 36">
-                          <path
-                            className="text-surface-container-high stroke-current"
-                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                            fill="none"
-                            strokeWidth="3.5"
-                          ></path>
-                          <path
-                            className="text-primary stroke-current"
-                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                            fill="none"
-                            strokeDasharray={`${parseFloat(profileStats.rate)}, 100`}
-                            strokeLinecap="round"
-                            strokeWidth="3.5"
-                          ></path>
-                        </svg>
-                      </div>
-                    </div>
-                  </section>
-
-                  {/* Trends & Distribution charts */}
-                  <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Distribution circle */}
-                    <div className="bg-surface-container-lowest custom-shadow rounded-xl p-6 lg:col-span-1">
-                      <h3 className="font-bold text-lg text-on-surface mb-6">Status Distribution</h3>
-                      <div className="relative h-64 flex items-center justify-center">
-                        <div className="relative h-48 w-48 rounded-full border-[20px] border-emerald-500 flex items-center justify-center flex-col">
-                          <span className="font-bold text-2xl text-primary">{profileStats.total}</span>
-                          <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Total Days</span>
-                        </div>
-                      </div>
-                      <div className="space-y-2 mt-4 text-sm font-semibold">
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center gap-2"><span className="w-3 h-3 bg-emerald-500 rounded-full"></span> Present</span>
-                          <span>{profileStats.presentPercent}%</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center gap-2"><span className="w-3 h-3 bg-amber-500 rounded-full"></span> Late</span>
-                          <span>{profileStats.latePercent}%</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center gap-2"><span className="w-3 h-3 bg-red-500 rounded-full"></span> Absent</span>
-                          <span>{profileStats.absentPercent}%</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Attendance Trends chart */}
-                    <div className="bg-surface-container-lowest custom-shadow rounded-xl p-6 lg:col-span-2">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                        <h3 className="font-bold text-lg text-on-surface capitalize">{trendFilter} {chartMetric === 'status' ? 'Attendance' : 'Working Hours'} Trend</h3>
-                        
-                        <div className="flex flex-wrap gap-2">
-                          {/* Metric Toggle */}
-                          <div className="flex gap-1 bg-surface-container-low p-1 rounded-lg text-[11px]">
-                            <button 
-                              onClick={() => {
-                                setChartMetric('status');
-                                showToast('Showing attendance status');
-                              }}
-                              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${chartMetric === 'status' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/30'}`}
-                            >
-                              Status
-                            </button>
-                            <button 
-                              onClick={() => {
-                                setChartMetric('hours');
-                                showToast('Showing working hours vs 8h average');
-                              }}
-                              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${chartMetric === 'hours' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/30'}`}
-                            >
-                              Working Hours
-                            </button>
-                          </div>
-
-                          {/* Trend Filter Toggle */}
-                          <div className="flex gap-1 bg-surface-container-low p-1 rounded-lg text-[11px]">
-                            <button 
-                              onClick={() => setTrendFilter('weekly')}
-                              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${trendFilter === 'weekly' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/30'}`}
-                            >
-                              Weekly
-                            </button>
-                            <button 
-                              onClick={() => setTrendFilter('monthly')}
-                              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${trendFilter === 'monthly' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/30'}`}
-                            >
-                              Monthly
-                            </button>
-                            <button 
-                              onClick={() => setTrendFilter('yearly')}
-                              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${trendFilter === 'yearly' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/30'}`}
-                            >
-                              Yearly
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* Simulating custom vector bars based on trendFilter */}
-                      <div className="h-64 pt-8 pb-2 pl-12 pr-4 border-b border-outline-variant/30">
-                        <div className="relative h-full w-full flex items-end justify-between gap-4">
-                          {/* 8-Hour Average Dashed Target Line */}
-                          {chartMetric === 'hours' && (
-                            <div 
-                              className="absolute left-0 right-0 border-t-2 border-dashed border-red-500/40 z-20 pointer-events-none transition-all duration-300"
-                              style={{ bottom: `${(8 / maxHoursScale) * 100}%` }}
-                            >
-                              <span className="absolute right-full mr-2 -top-2 bg-red-50 text-red-600 px-1.5 py-0.5 rounded text-[10px] font-extrabold border border-red-200/60 whitespace-nowrap shadow-sm">
-                                8hr
-                              </span>
-                            </div>
-                          )}
-
-                          {chartData.map((item, index) => {
-                            const hasData = item.total > 0;
-                            
-                            // Metric-specific variables
-                            const w = item.avgWorkingHours || 0;
-                            const exceeds = w >= 8;
-                            const workedPct = (Math.min(w, 8) / maxHoursScale) * 100;
-                            const excessPct = exceeds ? ((w - 8) / maxHoursScale) * 100 : 0;
-                            const deficitPct = !exceeds ? ((8 - w) / maxHoursScale) * 100 : 0;
-
-                            return (
-                              <div key={index} className="flex-1 flex flex-col justify-end h-full relative group">
-                                {/* Stacked Bar container */}
-                                {hasData ? (
-                                  <div className={`w-full flex flex-col justify-end rounded-t-md overflow-hidden transition-all duration-300 ${item.isToday || item.isCurrent ? 'ring-2 ring-primary ring-offset-2' : ''}`} style={{ height: '100%' }}>
-                                    {chartMetric === 'status' ? (
-                                      <>
-                                        {/* Present Segment */}
-                                        {item.presentPercent > 0 && (
-                                          <div 
-                                            className="bg-emerald-500 hover:brightness-105 transition-all" 
-                                            style={{ height: `${item.presentPercent}%` }}
-                                            title={`Present: ${item.presentPercent.toFixed(0)}%`}
-                                          />
-                                        )}
-                                        {/* Late Segment */}
-                                        {item.latePercent > 0 && (
-                                          <div 
-                                            className="bg-amber-500 hover:brightness-105 transition-all" 
-                                            style={{ height: `${item.latePercent}%` }}
-                                            title={`Late: ${item.latePercent.toFixed(0)}%`}
-                                          />
-                                        )}
-                                        {/* Absent Segment */}
-                                        {item.absentPercent > 0 && (
-                                          <div 
-                                            className="bg-red-500 hover:brightness-105 transition-all" 
-                                            style={{ height: `${item.absentPercent}%` }}
-                                            title={`Absent: ${item.absentPercent.toFixed(0)}%`}
-                                          />
-                                        )}
-                                      </>
-                                    ) : (
-                                      <>
-                                        {exceeds ? (
-                                          <>
-                                            {/* Blue Overtime Segment */}
-                                            {excessPct > 0 && (
-                                              <div 
-                                                className="bg-blue-500 hover:brightness-105 transition-all" 
-                                                style={{ height: `${excessPct}%` }}
-                                              />
-                                            )}
-                                            {/* Standard Worked Base Segment */}
-                                            {workedPct > 0 && (
-                                              <div 
-                                                className="bg-slate-300 hover:brightness-105 transition-all" 
-                                                style={{ height: `${workedPct}%` }}
-                                              />
-                                            )}
-                                          </>
-                                        ) : (
-                                          <>
-                                            {/* Yellow Deficit Segment */}
-                                            {deficitPct > 0 && (
-                                              <div 
-                                                className="bg-yellow-400 hover:brightness-105 transition-all" 
-                                                style={{ height: `${deficitPct}%` }}
-                                              />
-                                            )}
-                                            {/* Worked Base Segment */}
-                                            {workedPct > 0 && (
-                                              <div 
-                                                className="bg-slate-300 hover:brightness-105 transition-all" 
-                                                style={{ height: `${workedPct}%` }}
-                                              />
-                                            )}
-                                          </>
-                                        )}
-                                      </>
-                                    )}
-                                  </div>
-                                ) : (
-                                  /* No Data placeholder (e.g. future date or weekend) */
-                                  <div className="w-full h-1 bg-outline-variant/20 rounded-full" />
-                                )}
-
-                                {/* Tooltip on hover */}
-                                {hasData && (
-                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-900/95 backdrop-blur-md text-white text-[10px] p-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10 whitespace-nowrap border border-white/10">
-                                    {chartMetric === 'status' ? (
-                                      <>
-                                        <p className="font-bold text-center border-b border-white/10 pb-1 mb-1">{item.label} Attendance</p>
-                                        <p className="flex items-center gap-1.5"><span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Present: {item.present} ({item.presentPercent.toFixed(0)}%)</p>
-                                        <p className="flex items-center gap-1.5"><span className="w-2 h-2 bg-amber-500 rounded-full"></span> Late: {item.late} ({item.latePercent.toFixed(0)}%)</p>
-                                        <p className="flex items-center gap-1.5"><span className="w-2 h-2 bg-red-500 rounded-full"></span> Absent: {item.absent} ({item.absentPercent.toFixed(0)}%)</p>
-                                        {item.minsLate > 0 && (
-                                          <p className="text-amber-400 font-bold border-t border-white/10 pt-1 mt-1 flex items-center gap-1">
-                                            ⚠️ {trendFilter === 'Weekly' ? `Late by ${item.minsLate} mins` : `Late total: ${item.minsLate} mins`}
-                                          </p>
-                                        )}
-                                      </>
-                                    ) : (
-                                      <>
-                                        <p className="font-bold text-center border-b border-white/10 pb-1 mb-1">{item.label} Working Hours</p>
-                                        <p className="flex items-center gap-1.5">
-                                          <span className="w-2 h-2 bg-slate-300 rounded-full"></span> 
-                                          Worked: {w.toFixed(2)}h
-                                        </p>
-                                        {w >= 8 ? (
-                                          <p className="flex items-center gap-1.5 text-blue-400 font-semibold">
-                                            <span className="w-2 h-2 bg-blue-500 rounded-full"></span> 
-                                            Exceeds Average: +{(w - 8).toFixed(2)}h
-                                          </p>
-                                        ) : (
-                                          <p className="flex items-center gap-1.5 text-yellow-400 font-semibold">
-                                            <span className="w-2 h-2 bg-yellow-400 rounded-full"></span> 
-                                            Deficit Hours: -{(8 - w).toFixed(2)}h
-                                          </p>
-                                        )}
-                                        {item.minsLate > 0 && (
-                                          <p className="text-amber-400 font-bold border-t border-white/10 pt-1 mt-1 flex items-center gap-1">
-                                            ⚠️ {trendFilter === 'Weekly' ? `Late by ${item.minsLate} mins` : `Late total: ${item.minsLate} mins`}
-                                          </p>
-                                        )}
-                                      </>
-                                    )}
-                                  </div>
-                                )}
-                                
-                                {/* Weekend label indicator */}
-                                {item.isWeekend && (
-                                  <span className="absolute inset-0 flex items-center justify-center text-[9px] font-semibold text-on-surface-variant/40 select-none pointer-events-none rotate-90 sm:rotate-0">
-                                    Weekend
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* X-Axis labels */}
-                      <div className="flex justify-between pl-12 pr-4 mt-4 text-xs font-semibold text-on-surface-variant">
-                        {chartData.map((item, index) => (
-                          <span 
-                            key={index} 
-                            className={`flex-1 text-center truncate ${item.isToday || item.isCurrent ? 'text-primary font-bold' : ''}`}
-                          >
-                            {item.label}
-                          </span>
-                        ))}
-                      </div>
-
-                      {/* Legend */}
-                      <div className="flex justify-center gap-6 mt-6 pt-4 border-t border-outline-variant/30 text-xs font-semibold">
-                        {chartMetric === 'status' ? (
-                          <>
-                            <span className="flex items-center gap-2 text-on-surface-variant">
-                              <span className="w-3 h-3 bg-emerald-500 rounded-full"></span> Present
-                            </span>
-                            <span className="flex items-center gap-2 text-on-surface-variant">
-                              <span className="w-3 h-3 bg-amber-500 rounded-full"></span> Late
-                            </span>
-                            <span className="flex items-center gap-2 text-on-surface-variant">
-                              <span className="w-3 h-3 bg-red-500 rounded-full"></span> Absent
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="flex items-center gap-2 text-on-surface-variant">
-                              <span className="w-3 h-3 bg-slate-300 rounded-full"></span> Standard Base (8h)
-                            </span>
-                            <span className="flex items-center gap-2 text-on-surface-variant">
-                              <span className="w-3 h-3 bg-blue-500 rounded-full"></span> Overtime Exceeded (Blue)
-                            </span>
-                            <span className="flex items-center gap-2 text-on-surface-variant">
-                              <span className="w-3 h-3 bg-yellow-400 rounded-full"></span> Deficit Below Average (Yellow)
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </section>
-
-                  {/* Individual Logs History Table */}
-                  <section className="bg-surface-container-lowest custom-shadow rounded-xl overflow-hidden">
-                    <div className="px-6 py-4 border-b border-outline-variant bg-white">
-                      <h3 className="font-bold text-lg text-primary">Personal History Logs</h3>
-                    </div>
-                    
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="bg-surface-container-low text-on-surface-variant text-xs font-semibold uppercase tracking-wider">
-                            <th className="px-6 py-3">Date</th>
-                            <th className="px-6 py-3">Clock In</th>
-                            <th className="px-6 py-3">Clock Out</th>
-                            <th className="px-6 py-3">Working Hours</th>
-                            <th className="px-6 py-3">Break</th>
-                            <th className="px-6 py-3">Extra Hours</th>
-                            <th className="px-6 py-3">Break Allowance</th>
-                            <th className="px-6 py-3">Productivity</th>
-                            <th className="px-6 py-3">Remark</th>
-                            <th className="px-6 py-3">Status</th>
-                            <th className="px-6 py-3 text-center">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-outline-variant/30">
-                          {attendanceLogs
-                            .filter(log => log.employeeId === selectedEmployeeForProfile.id)
-                            .map((log) => {
-                              const isEditing = editingLogId === log.id;
-                              return (
-                                <tr key={log.id} className="hover:bg-primary/5 transition-colors">
-                                  <td className="px-6 py-4 font-semibold text-sm">{log.date}</td>
-                                  <td className="px-6 py-4 text-sm text-on-surface-variant">
-                                    {isEditing ? (
-                                      <input
-                                        type="time"
-                                        disabled={editStatus === 'Absent'}
-                                        value={editClockIn}
-                                        onChange={(e) => setEditClockIn(e.target.value)}
-                                        className="bg-surface-container-low border border-outline-variant rounded p-1 text-sm outline-none focus:ring-1 focus:ring-primary w-28"
-                                      />
-                                    ) : (
-                                      log.clockIn
-                                    )}
-                                  </td>
-                                  <td className="px-6 py-4 text-sm text-on-surface-variant">
-                                    {isEditing ? (
-                                      <input
-                                        type="time"
-                                        disabled={editStatus === 'Absent'}
-                                        value={editClockOut}
-                                        onChange={(e) => setEditClockOut(e.target.value)}
-                                        className="bg-surface-container-low border border-outline-variant rounded p-1 text-sm outline-none focus:ring-1 focus:ring-primary w-28"
-                                      />
-                                    ) : selectedEmployeeForProfile && log.date === todayDateString && (log.status === 'Present' || log.status === 'Late') && (log.clockOut === '--:--' || !log.clockOut) ? (
-                                      <button
-                                        onClick={() => handleClockOut(selectedEmployeeForProfile.id)}
-                                        className="px-2 py-0.5 bg-primary text-on-primary font-bold text-[10px] rounded hover:brightness-110 active:scale-95 transition-all cursor-pointer shadow-sm"
-                                      >
-                                        Clock Out
-                                      </button>
-                                    ) : (
-                                      log.clockOut
-                                    )}
-                                  </td>
-                                  <td className="px-6 py-4 text-sm font-semibold text-primary">
-                                    {isEditing ? (
-                                      calculateDuration(
-                                        editStatus === 'Absent' ? '--:--' : time24To12(editClockIn),
-                                        editStatus === 'Absent' ? '--:--' : time24To12(editClockOut)
-                                      )
-                                    ) : (
-                                      log.totalHours.split('|')[0]
-                                    )}
-                                  </td>
-                                  <td className="px-6 py-4">
-                                    <select
-                                      disabled={log.status === 'Absent' || isEditing}
-                                      value={getBreakMinutes(log.totalHours)}
-                                      onChange={(e) => handleUpdateBreakMinutes(log.id, parseInt(e.target.value, 10))}
-                                      className="bg-surface-container-low border border-outline-variant rounded px-2 py-1 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-white"
-                                    >
-                                      <option value="0">0 mins</option>
-                                      <option value="5">5 mins</option>
-                                      <option value="10">10 mins</option>
-                                      <option value="15">15 mins</option>
-                                      <option value="30">30 mins</option>
-                                      <option value="45">45 mins</option>
-                                      <option value="60">60 mins</option>
-                                      <option value="90">90 mins</option>
-                                      <option value="120">120 mins</option>
-                                    </select>
-                                  </td>
-                                  <td className="px-6 py-4">
-                                    {isEditing ? (
-                                      <div className="flex items-center gap-1">
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          value={editExtraHoursHrs}
-                                          onChange={(e) => setEditExtraHoursHrs(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                                          className="bg-surface-container-low border border-outline-variant rounded p-1 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary w-11 text-center bg-white"
-                                        />
-                                        <span className="text-[10px] text-on-surface-variant font-bold">h</span>
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          max="59"
-                                          value={editExtraHoursMins}
-                                          onChange={(e) => setEditExtraHoursMins(Math.max(0, Math.min(59, parseInt(e.target.value, 10) || 0)))}
-                                          className="bg-surface-container-low border border-outline-variant rounded p-1 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary w-11 text-center bg-white"
-                                        />
-                                        <span className="text-[10px] text-on-surface-variant font-bold">m</span>
+                                  <tr key={tl.id} className="hover:bg-primary/5 transition-colors">
+                                    <td className="py-3 px-3 font-bold text-primary">
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 rounded-full border border-primary/20 bg-primary/10 flex items-center justify-center text-xs">
+                                          {tl.fullName.charAt(0)}
+                                        </div>
+                                        <div>
+                                          <p className="font-bold">{tl.fullName}</p>
+                                          <p className="text-[10px] text-on-surface-variant font-medium">@{tl.username}</p>
+                                        </div>
                                       </div>
-                                    ) : (
-                                      getExtraHoursStr(log.totalHours) === '0h 00m' ? (
-                                        <span className="text-on-surface-variant/40 italic">--</span>
+                                    </td>
+                                    <td className="py-3 px-3">
+                                      {tlTasks.length === 0 ? (
+                                        <span className="text-[11px] text-on-surface-variant/70 italic">No tasks assigned yet</span>
                                       ) : (
-                                        getExtraHoursStr(log.totalHours)
-                                      )
-                                    )}
+                                        <div className="space-y-1.5 max-w-md">
+                                          {tlTasks.map(t => (
+                                            <div key={t.id} className="p-2 bg-slate-50 border border-outline-variant/40 rounded-lg">
+                                              <p className="font-semibold text-primary">{t.title}</p>
+                                              {t.description && <p className="text-[10px] text-on-surface-variant font-medium mt-0.5">{t.description}</p>}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td className="py-3 px-3">
+                                      <div className="space-y-1">
+                                        {tlTasks.map(t => (
+                                          <div key={t.id} className="h-[26px] flex items-center">
+                                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                              t.priority === 'High' ? 'bg-red-50 text-red-700' :
+                                              t.priority === 'Medium' ? 'bg-amber-50 text-amber-700' : 'bg-slate-50 text-slate-700'
+                                            }`}>
+                                              {t.priority}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </td>
+                                    <td className="py-3 px-3 font-bold text-on-surface-variant">
+                                      <div className="space-y-1">
+                                        {tlTasks.map(t => (
+                                          <div key={t.id} className="h-[26px] flex items-center">
+                                            <span>{t.deadline}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </td>
+                                    <td className="py-3 px-3">
+                                      <div className="space-y-1">
+                                        {tlTasks.map(t => (
+                                          <div key={t.id} className="h-[26px] flex items-center">
+                                            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${
+                                              t.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                              t.status === 'In Progress' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-50 text-slate-700 border-slate-200'
+                                            }`}>
+                                              {t.status}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. ADMIN ATTENDANCE LOGS SCREEN */}
+                {currentTab === 'Attendance' && (
+                  <div className="space-y-6">
+                    <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-6">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div>
+                          <h2 className="font-bold text-lg text-primary">Attendance Records Log</h2>
+                          <p className="text-xs text-on-surface-variant font-medium">Verify employee logs, edit clock details, breaks, allowances, and remarks.</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            onClick={() => setIsExportModalOpen(true)}
+                            className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-on-primary px-4 py-2 rounded-full text-xs font-semibold shadow-sm transition-all cursor-pointer"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            Export CSV / PDF
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Filter Bar */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-surface-container-low/40 rounded-xl border border-outline-variant/30">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant w-4 h-4" />
+                          <input
+                            type="text"
+                            placeholder="Search corporate ID or name..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full bg-white border border-outline-variant rounded-lg pl-9 pr-3 py-1.5 text-xs text-on-surface focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <select
+                            value={selectedAttendanceDate}
+                            onChange={(e) => setSelectedAttendanceDate(e.target.value)}
+                            className="w-full bg-white border border-outline-variant rounded-lg px-3 py-1.5 text-xs text-on-surface focus:outline-none"
+                          >
+                            {uniqueAttendanceDates.map(date => (
+                              <option key={date} value={date}>{date}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <select
+                            value={attendanceStatusFilter}
+                            onChange={(e) => setAttendanceStatusFilter(e.target.value)}
+                            className="w-full bg-white border border-outline-variant rounded-lg px-3 py-1.5 text-xs text-on-surface focus:outline-none"
+                          >
+                            <option value="All Statuses">All Statuses</option>
+                            <option value="Present">Present</option>
+                            <option value="Late">Late</option>
+                            <option value="Absent">Absent</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Main Records Table */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm border-collapse">
+                          <thead>
+                            <tr className="border-b border-outline-variant/40 bg-surface-container-low/20">
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Employee</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Status</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Times (In / Out)</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Work Hours</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Break (min)</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Break Allow</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Productive</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Remark / Extras</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-outline-variant/20">
+                            {filteredAttendanceEmployees.map(emp => {
+                              const log = attendanceLogs.find(l => l.employeeId === emp.id && l.date === selectedAttendanceDate);
+                              const logExists = !!log;
+                              const status = log ? log.status : 'Absent';
+                              const inTime = log ? log.clockIn : '--:--';
+                              const outTime = log ? log.clockOut : '--:--';
+                              const totalHoursStr = log ? log.totalHours : '0h 00m';
+
+                              const rawHours = totalHoursStr.split('|')[0];
+                              const breakMins = getBreakMinutes(totalHoursStr);
+                              const remark = getRemark(totalHoursStr);
+                              const extraMins = getExtraHoursMinutes(totalHoursStr);
+                              const breakAllowance = getBreakAllowanceMinutes(totalHoursStr);
+                              const productiveHours = getProductiveHoursStr(totalHoursStr);
+
+                              const isEditingThisRow = logExists && editingLogId === log.id;
+
+                              return (
+                                <tr key={emp.id} className="hover:bg-primary/5 transition-colors">
+                                  <td className="py-3 px-4">
+                                    <div className="flex items-center gap-3">
+                                      <img src={emp.avatarUrl} alt={emp.name} className="w-8 h-8 rounded-full object-cover border border-outline-variant" />
+                                      <div>
+                                        <p className="font-bold text-sm text-primary">{emp.name}</p>
+                                        <p className="text-[11px] text-on-surface-variant">{emp.empId}</p>
+                                      </div>
+                                    </div>
                                   </td>
-                                  <td className="px-6 py-4">
-                                    <select
-                                      disabled={log.status === 'Absent' || isEditing}
-                                      value={getBreakAllowanceMinutes(log.totalHours)}
-                                      onChange={(e) => handleUpdateBreakAllowance(log.id, parseInt(e.target.value, 10))}
-                                      className="bg-surface-container-low border border-outline-variant rounded px-2 py-1 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-white"
-                                    >
-                                      <option value="0">0 mins</option>
-                                      <option value="15">15 mins</option>
-                                      <option value="45">45 mins</option>
-                                      <option value="60">60 mins</option>
-                                    </select>
-                                  </td>
-                                  <td className="px-6 py-4 text-sm font-bold text-primary">
-                                    {isEditing ? (
-                                      getProductiveHoursStr(
-                                        calculateDuration(
-                                          editStatus === 'Absent' ? '--:--' : time24To12(editClockIn),
-                                          editStatus === 'Absent' ? '--:--' : time24To12(editClockOut)
-                                        ) + `|${getBreakMinutes(log.totalHours)}|${editRemark.trim()}|${editExtraHoursHrs * 60 + editExtraHoursMins}|${getBreakAllowanceMinutes(log.totalHours)}`
-                                      )
-                                    ) : (
-                                      getProductiveHoursStr(log.totalHours)
-                                    )}
-                                  </td>
-                                  <td className="px-6 py-4 text-sm text-on-surface-variant max-w-[180px] truncate">
-                                    {isEditing ? (
-                                      <input
-                                        type="text"
-                                        value={editRemark}
-                                        onChange={(e) => setEditRemark(e.target.value)}
-                                        placeholder="Add remark..."
-                                        className="bg-surface-container-low border border-outline-variant rounded p-1 text-sm outline-none focus:ring-1 focus:ring-primary w-40"
-                                      />
-                                    ) : (
-                                      getRemark(log.totalHours) || <span className="text-on-surface-variant/40 italic">--</span>
-                                    )}
-                                  </td>
-                                  <td className="px-6 py-4">
-                                    {isEditing ? (
+                                  <td className="py-3 px-4">
+                                    {isEditingThisRow ? (
                                       <select
                                         value={editStatus}
-                                        onChange={(e) => {
-                                          const newStatus = e.target.value as 'Present' | 'Absent' | 'Late';
-                                          setEditStatus(newStatus);
-                                          if (newStatus === 'Absent') {
-                                            setEditClockIn('');
-                                            setEditClockOut('');
-                                          } else {
-                                            if (!editClockIn) setEditClockIn('09:00');
-                                            if (!editClockOut) setEditClockOut('17:00');
-                                          }
-                                        }}
-                                        className="bg-surface-container-low border border-outline-variant rounded p-1.5 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary"
+                                        onChange={(e) => setEditStatus(e.target.value as any)}
+                                        className="bg-white border border-outline-variant rounded p-1 text-xs"
                                       >
                                         <option value="Present">Present</option>
                                         <option value="Late">Late</option>
                                         <option value="Absent">Absent</option>
                                       </select>
                                     ) : (
-                                       <div className="flex flex-col items-start gap-1">
-                                         <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
-                                           log.status === 'Present' ? 'bg-emerald-100 text-emerald-800' :
-                                           log.status === 'Late' ? 'bg-amber-100 text-amber-800' :
-                                           'bg-error-container/40 text-error'
-                                         }`}>
-                                           {log.status}
-                                         </span>
-                                         {log.status === 'Late' && log.clockIn && calculateMinutesLate(log.clockIn) > 0 && (
-                                           <span className="text-[10px] text-amber-600 font-semibold whitespace-nowrap">
-                                             Late by {calculateMinutesLate(log.clockIn)} mins
-                                           </span>
-                                         )}
-                                       </div>
+                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                        status === 'Present'
+                                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                          : status === 'Late'
+                                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                          : 'bg-red-50 text-red-700 border border-red-200'
+                                      }`}>
+                                        {status}
+                                      </span>
                                     )}
                                   </td>
-                                  <td className="px-6 py-4 text-center">
-                                    {isEditing ? (
-                                      <div className="flex justify-center items-center gap-1.5">
-                                        <button
-                                          title="Save Changes"
-                                          onClick={() => handleSaveAttendanceEdit(log.id)}
-                                          className="p-1.5 rounded-full border border-emerald-600 bg-emerald-600 text-white hover:brightness-110 active:scale-95 transition-all shadow-sm cursor-pointer"
-                                        >
-                                          <Check className="w-3.5 h-3.5" />
-                                        </button>
-                                        <button
-                                          title="Cancel"
-                                          onClick={() => setEditingLogId(null)}
-                                          className="p-1.5 rounded-full border border-outline-variant text-on-surface-variant hover:bg-surface-container active:scale-95 transition-all cursor-pointer"
-                                        >
-                                          <X className="w-3.5 h-3.5" />
-                                        </button>
+                                  <td className="py-3 px-4 text-xs font-semibold">
+                                    {isEditingThisRow ? (
+                                      <div className="flex flex-col gap-1">
+                                        <input
+                                          type="time"
+                                          value={editClockIn}
+                                          onChange={(e) => setEditClockIn(e.target.value)}
+                                          className="bg-white border border-outline-variant rounded p-0.5 text-xs max-w-[80px]"
+                                          disabled={editStatus === 'Absent'}
+                                        />
+                                        <input
+                                          type="time"
+                                          value={editClockOut}
+                                          onChange={(e) => setEditClockOut(e.target.value)}
+                                          className="bg-white border border-outline-variant rounded p-0.5 text-xs max-w-[80px]"
+                                          disabled={editStatus === 'Absent'}
+                                        />
                                       </div>
                                     ) : (
-                                      <div className="flex justify-center items-center gap-1.5">
+                                      <div className="flex flex-col gap-0.5">
+                                        <span>In: <strong>{inTime}</strong></span>
+                                        <span>Out: <strong>{outTime}</strong></span>
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="py-3 px-4 text-xs font-bold text-primary">{rawHours}</td>
+                                  <td className="py-3 px-4 text-xs">
+                                    {logExists && !isEditingThisRow ? (
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max="480"
+                                        value={breakMins}
+                                        onChange={(e) => handleUpdateBreakMinutes(log.id, parseInt(e.target.value) || 0)}
+                                        className="w-12 bg-surface-container-low border border-outline-variant rounded px-1.5 py-0.5 font-semibold text-center focus:outline-none focus:ring-1 focus:ring-primary"
+                                      />
+                                    ) : '--'}
+                                  </td>
+                                  <td className="py-3 px-4 text-xs">
+                                    {logExists && !isEditingThisRow ? (
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max="120"
+                                        value={breakAllowance}
+                                        onChange={(e) => handleUpdateBreakAllowance(log.id, parseInt(e.target.value) || 0)}
+                                        className="w-12 bg-surface-container-low border border-outline-variant rounded px-1.5 py-0.5 font-semibold text-center focus:outline-none focus:ring-1 focus:ring-primary"
+                                      />
+                                    ) : '--'}
+                                  </td>
+                                  <td className="py-3 px-4 text-xs font-extrabold text-emerald-600">{productiveHours}</td>
+                                  <td className="py-3 px-4 text-xs">
+                                    {isEditingThisRow ? (
+                                      <div className="flex flex-col gap-1">
+                                        <input
+                                          type="text"
+                                          value={editRemark}
+                                          onChange={(e) => setEditRemark(e.target.value)}
+                                          placeholder="Remark"
+                                          className="bg-white border border-outline-variant rounded p-0.5 text-xs max-w-[120px]"
+                                          disabled={editStatus === 'Absent'}
+                                        />
+                                        <div className="flex gap-1 items-center">
+                                          <input
+                                            type="number"
+                                            value={editExtraHoursHrs}
+                                            onChange={(e) => setEditExtraHoursHrs(parseInt(e.target.value) || 0)}
+                                            placeholder="Hrs"
+                                            className="bg-white border border-outline-variant rounded p-0.5 text-xs w-10 text-center"
+                                            disabled={editStatus === 'Absent'}
+                                          />
+                                          <span>h</span>
+                                          <input
+                                            type="number"
+                                            value={editExtraHoursMins}
+                                            onChange={(e) => setEditExtraHoursMins(parseInt(e.target.value) || 0)}
+                                            placeholder="Min"
+                                            className="bg-white border border-outline-variant rounded p-0.5 text-xs w-10 text-center"
+                                            disabled={editStatus === 'Absent'}
+                                          />
+                                          <span>m</span>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="flex flex-col gap-0.5 text-[11px] text-on-surface-variant">
+                                        {remark && <span className="font-semibold italic">"{remark}"</span>}
+                                        {extraMins > 0 && <span className="text-emerald-700 font-bold">Extra: +{getExtraHoursStr(totalHoursStr)}</span>}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="py-3 px-4 text-xs">
+                                    {isEditingThisRow ? (
+                                      <div className="flex gap-1">
                                         <button
-                                          title="Edit Attendance Log"
+                                          onClick={() => handleSaveAttendanceEdit(log.id)}
+                                          className="p-1 hover:bg-emerald-50 text-emerald-600 rounded cursor-pointer"
+                                        >
+                                          <Check className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                          onClick={() => setEditingLogId(null)}
+                                          className="p-1 hover:bg-red-50 text-error rounded cursor-pointer"
+                                        >
+                                          <X className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    ) : logExists ? (
+                                      <div className="flex gap-1.5">
+                                        <button
                                           onClick={() => {
                                             setEditingLogId(log.id);
                                             setEditClockIn(time12To24(log.clockIn));
                                             setEditClockOut(time12To24(log.clockOut));
-                                            setEditStatus(log.status as 'Present' | 'Absent' | 'Late');
-                                            setEditRemark(getRemark(log.totalHours));
-                                            const extraMins = getExtraHoursMinutes(log.totalHours);
+                                            setEditStatus(log.status);
+                                            setEditRemark(remark);
                                             setEditExtraHoursHrs(Math.floor(extraMins / 60));
                                             setEditExtraHoursMins(extraMins % 60);
                                           }}
-                                          className="p-1.5 rounded-full border border-outline-variant text-primary hover:bg-primary/10 hover:border-primary active:scale-95 transition-all cursor-pointer"
+                                          className="p-1 hover:bg-surface-container rounded text-on-surface-variant hover:text-primary transition-all cursor-pointer"
+                                          title="Edit details"
                                         >
-                                          <Edit2 className="w-3.5 h-3.5" />
+                                          <Edit2 className="w-4 h-4" />
                                         </button>
                                         <button
-                                          title="Delete Attendance Log"
                                           onClick={() => handleDeleteAttendance(log.id)}
-                                          className="p-1.5 rounded-full border border-outline-variant text-error hover:bg-error-container/20 hover:border-error transition-all"
+                                          className="p-1 hover:bg-red-50 rounded text-on-surface-variant hover:text-error transition-all cursor-pointer"
+                                          title="Delete log"
                                         >
-                                          <Trash2 className="w-3.5 h-3.5" />
+                                          <Trash2 className="w-4 h-4" />
                                         </button>
                                       </div>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleUpdateStatus(emp.id, 'Present', selectedAttendanceDate)}
+                                        className="px-2.5 py-1 bg-primary text-on-primary hover:bg-primary/90 rounded text-[11px] font-bold transition-all shadow-sm cursor-pointer"
+                                      >
+                                        Log Clock In
+                                      </button>
                                     )}
                                   </td>
                                 </tr>
                               );
                             })}
-                        </tbody>
-                      </table>
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                    <div className="p-4 bg-surface-container-low border-t text-center">
-                      <button onClick={() => showToast('All logs fully loaded.')} className="font-bold text-sm text-primary hover:underline">
-                        View More Months
-                      </button>
+                  </div>
+                )}
+
+                {/* 3. ADMIN: USER MANAGEMENT MODULE */}
+                {currentTab === 'UserManagement' && (
+                  <div className="space-y-6 animate-fade-in">
+                    <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-6">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div>
+                          <h2 className="font-bold text-lg text-primary">User Directory & Credentials</h2>
+                          <p className="text-xs text-on-surface-variant font-medium">Manage user credentials, roles (RBAC), departments, status and linked corporate IDs.</p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setEditingUser(null);
+                            setUserFormFullName('');
+                            setUserFormUsername('');
+                            setUserFormEmail('');
+                            setUserFormPhone('');
+                            setUserFormDesignation('');
+                            setUserFormDepartment('');
+                            setUserFormJoiningDate(new Date().toISOString().split('T')[0]);
+                            setUserFormRole('Employee');
+                            setUserFormStatus('Active');
+                            setUserFormPassword('');
+                            setUserFormEmployeeId('');
+                            setUserFormInternType('Online Intern');
+                            setUserFormManagerId('');
+                            setIsUserModalOpen(true);
+                          }}
+                          className="inline-flex items-center gap-1.5 bg-primary hover:bg-primary/90 text-on-primary px-4 py-2 rounded-full text-xs font-semibold shadow-sm transition-all cursor-pointer"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Add User
+                        </button>
+                      </div>
+
+                      {/* Directory Table */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm border-collapse">
+                          <thead>
+                            <tr className="border-b border-outline-variant/40 bg-surface-container-low/20">
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">User Account</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Role</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Department / Designation</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Contact</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Status</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-outline-variant/20">
+                            {users.map((u) => {
+                              const avatar = employees.find(e => e.id === u.employeeId)?.avatarUrl;
+
+                              return (
+                                <tr key={u.id} className="hover:bg-primary/5 transition-colors">
+                                  <td className="py-4 px-4">
+                                    <div className="flex items-center gap-3">
+                                      {avatar ? (
+                                        <img src={avatar} alt={u.fullName} className="w-9 h-9 rounded-full object-cover border border-outline-variant" />
+                                      ) : (
+                                        <div className="w-9 h-9 rounded-full border border-primary/20 bg-primary/5 flex items-center justify-center text-primary font-bold text-sm">
+                                          {u.fullName.charAt(0)}
+                                        </div>
+                                      )}
+                                      <div>
+                                        <p className="font-bold text-sm text-primary">{u.fullName}</p>
+                                        <p className="text-[11px] text-on-surface-variant font-medium">@{u.username}</p>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="py-4 px-4">
+                                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                      u.role === 'Admin'
+                                        ? 'bg-red-50 text-red-700 border border-red-200'
+                                        : u.role === 'Team Leader'
+                                        ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    }`}>
+                                      {u.role}
+                                    </span>
+                                  </td>
+                                  <td className="py-4 px-4 text-xs font-semibold text-on-surface-variant">
+                                    <div className="flex flex-col">
+                                      <span>{u.designation}</span>
+                                      <span className="text-[10px] text-on-surface-variant/70 font-normal">{u.department}</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-4 px-4 text-xs font-medium text-on-surface-variant">
+                                    <div className="flex flex-col">
+                                      <span>{u.email}</span>
+                                      {u.phoneNumber && <span className="text-[10px] text-on-surface-variant/70">{u.phoneNumber}</span>}
+                                    </div>
+                                  </td>
+                                  <td className="py-4 px-4">
+                                    <button
+                                      onClick={() => handleToggleUserStatus(u)}
+                                      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border cursor-pointer hover:scale-95 transition-transform ${
+                                        u.status === 'Active'
+                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                          : 'bg-red-50 text-red-700 border-red-200'
+                                      }`}
+                                    >
+                                      <span className={`w-1.5 h-1.5 rounded-full ${u.status === 'Active' ? 'bg-emerald-500' : 'bg-red-500'}`}></span>
+                                      {u.status}
+                                    </button>
+                                  </td>
+                                  <td className="py-4 px-4 text-xs">
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={() => {
+                                          setEditingUser(u);
+                                          setUserFormFullName(u.fullName);
+                                          setUserFormUsername(u.username);
+                                          setUserFormEmail(u.email);
+                                          setUserFormPhone(u.phoneNumber || '');
+                                          setUserFormDesignation(u.designation);
+                                          setUserFormDepartment(u.department);
+                                          setUserFormJoiningDate(u.joiningDate || '');
+                                          setUserFormRole(u.role);
+                                          setUserFormStatus(u.status);
+                                          setUserFormInternType(u.internType || 'Online Intern');
+                                          setUserFormPassword('');
+                                          setUserFormEmployeeId(employees.find(e => e.id === u.employeeId)?.empId || '');
+                                          setUserFormManagerId(u.managerId || '');
+                                          setIsUserModalOpen(true);
+                                        }}
+                                        className="p-1 hover:bg-surface-container rounded text-primary transition-all cursor-pointer"
+                                        title="Edit profile & details"
+                                      >
+                                        <Edit2 className="w-4 h-4" />
+                                      </button>
+                                      {u.role === 'Employee' && (
+                                        <button
+                                          onClick={() => handlePromoteToTeamLeader(u)}
+                                          className="p-1 hover:bg-teal-50 rounded text-teal-600 transition-all cursor-pointer"
+                                          title="Promote to Team Leader"
+                                        >
+                                          <Award className="w-4 h-4" />
+                                        </button>
+                                      )}
+                                      <button
+                                        onClick={() => handleDeleteUserFlow(u.id, u.fullName, u.employeeId)}
+                                        className="p-1 hover:bg-red-50 rounded text-error transition-all cursor-pointer"
+                                        title="Delete user account"
+                                        disabled={u.id === currentUser?.id}
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                  </section>
-                </>
-              )}
+                  </div>
+                )}
 
-              {/* Empty profile fallback when no employee is selected/available */}
-              {currentTab === 'Reports' && !selectedEmployeeForProfile && (
-                <div className="bg-surface-container-lowest custom-shadow rounded-xl p-12 text-center text-on-surface-variant font-medium">
-                  <User className="w-16 h-16 text-outline mx-auto mb-4" />
-                  <h3 className="text-xl font-bold text-primary mb-2">No Profile Selected</h3>
-                  <p className="text-sm max-w-md mx-auto">
-                    Please select an employee from the Dashboard or Users tab to view their detailed reports and history.
-                  </p>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-          </div>
+                {/* 3.1. ADMIN: TEAM LEADERS HIERARCHY */}
+                {currentTab === 'AdminTeamLeaders' && (
+                  <div className="space-y-6 animate-fade-in">
+                    {/* Welcome Banner */}
+                    <div className="bg-gradient-to-r from-[#1b365d] to-[#0b2046] p-6 rounded-2xl text-white shadow-md">
+                      <h1 className="font-bold text-2xl tracking-tight">Team Leaders & Org Structure</h1>
+                      <p className="text-xs text-white/80 font-medium mt-1">Visualize organizational reporting structure, active team leaders, and their assigned interns.</p>
+                    </div>
 
-          {/* Bottom Mobile Tab Navigation */}
-          <nav className="fixed bottom-0 left-0 w-full flex justify-around items-center py-2.5 bg-surface-container-lowest/95 backdrop-blur-md border-t border-outline-variant shadow-lg lg:hidden z-50">
-            {(['Dashboard', 'Attendance', 'Users', 'Reports'] as ViewTab[]).map((tab) =>  (
-              <button
-                key={tab}
-                onClick={() => {
-                  setCurrentTab(tab);
-                }}
-                className={`flex flex-col items-center justify-center text-[10px] transition-transform ${
-                  currentTab === tab ? 'text-primary font-bold' : 'text-on-surface-variant'
-                }`}
-              >
-                <span className="text-xl mb-0.5">
-                  {tab === 'Dashboard' && '📊'}
-                  {tab === 'Attendance' && '📋'}
-                  {tab === 'Users' && '👥'}
-                  {tab === 'Reports' && '👤'}
-                </span>
-                <span>{tab}</span>
-              </button>
-            ))}
-          </nav>
+                    {/* Flow Chart / Hierarchy Visualizer */}
+                    <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-6">
+                      <div>
+                        <h2 className="font-bold text-lg text-primary">Organizational Hierarchy Diagram</h2>
+                        <p className="text-xs text-on-surface-variant font-medium">Flow chart showing relationship between Admin, Team Leaders, and assigned Interns.</p>
+                      </div>
+
+                      <div className="flex flex-col items-center justify-center p-8 bg-slate-50 rounded-xl border border-outline-variant/30 overflow-x-auto min-w-full">
+                        {/* Admin Node */}
+                        <div className="flex flex-col items-center">
+                          <div className="bg-indigo-600 text-white px-6 py-3 rounded-xl shadow-md border border-indigo-700 flex flex-col items-center text-center">
+                            <span className="text-[10px] uppercase font-bold tracking-widest text-indigo-200">System Admin</span>
+                            <span className="font-bold text-xs mt-0.5">{users.find(u => u.role === 'Admin')?.fullName || 'Admin User'}</span>
+                          </div>
+                          
+                          {/* Vertical Connector */}
+                          <div className="w-0.5 h-8 bg-indigo-300"></div>
+                        </div>
+
+                        {/* Team Leaders Level */}
+                        {users.filter(u => u.role === 'Team Leader').length === 0 ? (
+                          <div className="flex flex-col items-center">
+                            <div className="w-48 h-0.5 bg-indigo-300"></div>
+                            <p className="text-xs text-on-surface-variant/70 italic mt-4 font-semibold">No Team Leaders registered yet. Promote or register team leaders to see flowchart.</p>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center w-full">
+                            {/* Horizontal span connecting TLs */}
+                            <div className="w-3/4 h-0.5 bg-indigo-300"></div>
+                            
+                            <div className="flex flex-wrap justify-center gap-8 mt-4 w-full">
+                              {users.filter(u => u.role === 'Team Leader').map(tl => {
+                                const myInterns = users.filter(u => u.managerId === tl.id);
+                                return (
+                                  <div key={tl.id} className="flex flex-col items-center">
+                                    {/* TL connector */}
+                                    <div className="w-0.5 h-4 bg-indigo-300 -mt-4"></div>
+                                    
+                                    {/* Team Leader Node */}
+                                    <div className="bg-teal-600 text-white px-5 py-2.5 rounded-xl shadow-md border border-teal-700 flex flex-col items-center text-center max-w-[200px]">
+                                      <span className="text-[9px] uppercase font-bold tracking-widest text-teal-200">Team Leader</span>
+                                      <span className="font-bold text-xs mt-0.5">{tl.fullName}</span>
+                                      <span className="text-[9px] text-white/70">@{tl.username}</span>
+                                    </div>
+
+                                    {/* Connection to Interns */}
+                                    {myInterns.length > 0 && (
+                                      <div className="flex flex-col items-center w-full">
+                                        <div className="w-0.5 h-6 bg-teal-300"></div>
+                                        <div className="w-3/4 h-0.5 bg-teal-300"></div>
+                                        <div className="flex gap-4 mt-3">
+                                          {myInterns.map(intern => (
+                                            <div key={intern.id} className="flex flex-col items-center">
+                                              <div className="w-0.5 h-3 bg-teal-300 -mt-3"></div>
+                                              <div className="bg-white border border-outline-variant px-3 py-1.5 rounded-lg shadow-xs flex flex-col items-center text-center max-w-[120px]">
+                                                <span className="font-bold text-[10px] text-primary truncate max-w-[100px]">{intern.fullName}</span>
+                                                <span className="text-[9px] text-on-surface-variant font-medium">@{intern.username}</span>
+                                                <span className="text-[8px] mt-0.5 text-on-surface-variant/80 px-1 py-0.5 bg-slate-100 rounded text-center scale-90">{intern.internType || 'Online'}</span>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Team Leader Details Directory */}
+                    <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-6">
+                      <div>
+                        <h2 className="font-bold text-lg text-primary">Team Leaders & Assigned Members</h2>
+                        <p className="text-xs text-on-surface-variant font-medium">Breakdown list of all team leaders and interns reporting to them.</p>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="border-b border-outline-variant/40 bg-surface-container-low/20">
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Team Leader</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Designation / Dept</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Assigned Interns Count</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Intern Breakdown</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-outline-variant/20">
+                            {users.filter(u => u.role === 'Team Leader').length === 0 ? (
+                              <tr>
+                                <td colSpan={4} className="py-6 text-center text-on-surface-variant/70 font-semibold">
+                                  No Team Leaders found. Go to <strong className="text-primary">User Management</strong> to promote or create one.
+                                </td>
+                              </tr>
+                            ) : (
+                              users.filter(u => u.role === 'Team Leader').map(tl => {
+                                const myInterns = users.filter(u => u.managerId === tl.id);
+                                return (
+                                  <tr key={tl.id} className="hover:bg-primary/5 transition-colors">
+                                    <td className="py-3.5 px-4">
+                                      <div className="font-bold text-primary text-sm">{tl.fullName}</div>
+                                      <div className="text-[10px] text-on-surface-variant">@{tl.username} • {tl.email}</div>
+                                    </td>
+                                    <td className="py-3.5 px-4 font-semibold text-on-surface-variant">
+                                      {tl.designation} ({tl.department})
+                                    </td>
+                                    <td className="py-3.5 px-4">
+                                      <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                        {myInterns.length} Interns
+                                      </span>
+                                    </td>
+                                    <td className="py-3.5 px-4">
+                                      {myInterns.length === 0 ? (
+                                        <span className="text-[10px] text-on-surface-variant/60 italic">No assigned interns</span>
+                                      ) : (
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {myInterns.map(i => (
+                                            <span key={i.id} className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-medium bg-slate-100 border border-slate-200 text-on-surface-variant">
+                                              {i.fullName} (@{i.username})
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 3.2. ADMIN: TEAM LEADER TASKS MANAGEMENT */}
+                {currentTab === 'AdminTLTasks' && (
+                  <div className="space-y-6 animate-fade-in">
+                    {/* Welcome Banner */}
+                    <div className="bg-gradient-to-r from-[#1b365d] to-[#0b2046] p-6 rounded-2xl text-white shadow-md">
+                      <h1 className="font-bold text-2xl tracking-tight">Team Leader Task Console</h1>
+                      <p className="text-xs text-white/80 font-medium mt-1">Assign critical operations goals to Team Leaders and monitor their completion statuses.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      {/* Left: Assign Goal Form */}
+                      <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-4">
+                        <div>
+                          <h2 className="font-bold text-base text-primary">Assign New Goal to TL</h2>
+                          <p className="text-[11px] text-on-surface-variant font-medium">Create a task specifically for an active Team Leader.</p>
+                        </div>
+
+                        <form
+                          onSubmit={async (e) => {
+                            e.preventDefault();
+                            if (!newTaskTitle.trim() || !newTaskAssigneeId) {
+                              showToast('Please provide a task title and select a Team Leader.');
+                              return;
+                            }
+                            const task: TaskRecord = {
+                              id: `task-${Date.now()}`,
+                              userId: newTaskAssigneeId,
+                              title: newTaskTitle.trim(),
+                              description: newTaskDesc.trim(),
+                              priority: newTaskPriority,
+                              deadline: newTaskDeadline || new Date().toISOString().split('T')[0],
+                              status: 'Pending',
+                              attachment: newTaskAttachment.trim(),
+                              createdAt: new Date().toISOString()
+                            };
+                            await saveTask(task);
+                            showToast(`Goal assigned to Team Leader successfully.`);
+                            // Reset state
+                            setNewTaskTitle('');
+                            setNewTaskDesc('');
+                            setNewTaskPriority('Medium');
+                            setNewTaskDeadline(new Date().toISOString().split('T')[0]);
+                            setNewTaskAssigneeId('');
+                            setNewTaskAttachment('');
+                            await fetchData();
+                          }}
+                          className="space-y-3.5 text-xs font-semibold text-on-surface-variant"
+                        >
+                          <div className="space-y-1">
+                            <label className="text-[10px] uppercase font-bold tracking-wider">Select Team Leader</label>
+                            <select
+                              required
+                              value={newTaskAssigneeId}
+                              onChange={(e) => setNewTaskAssigneeId(e.target.value)}
+                              className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                            >
+                              <option value="">-- Choose Team Leader --</option>
+                              {users.filter(u => u.role === 'Team Leader').map(tl => (
+                                <option key={tl.id} value={tl.id}>
+                                  {tl.fullName} (@{tl.username})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] uppercase font-bold tracking-wider">Goal Title</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="e.g. Design System Implementation"
+                              value={newTaskTitle}
+                              onChange={(e) => setNewTaskTitle(e.target.value)}
+                              className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] uppercase font-bold tracking-wider">Description</label>
+                            <textarea
+                              placeholder="Describe the outcomes expected..."
+                              value={newTaskDesc}
+                              onChange={(e) => setNewTaskDesc(e.target.value)}
+                              rows={3}
+                              className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none resize-none"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <label className="text-[10px] uppercase font-bold tracking-wider">Priority</label>
+                              <select
+                                value={newTaskPriority}
+                                onChange={(e) => setNewTaskPriority(e.target.value as any)}
+                                className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2 text-xs text-on-surface focus:outline-none"
+                              >
+                                <option value="Low">Low</option>
+                                <option value="Medium">Medium</option>
+                                <option value="High">High</option>
+                              </select>
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] uppercase font-bold tracking-wider">Deadline</label>
+                              <input
+                                type="date"
+                                required
+                                value={newTaskDeadline}
+                                onChange={(e) => setNewTaskDeadline(e.target.value)}
+                                className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2 text-xs text-on-surface focus:outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] uppercase font-bold tracking-wider">Attachment URL (Optional)</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. https://docs.google.com/..."
+                              value={newTaskAttachment}
+                              onChange={(e) => setNewTaskAttachment(e.target.value)}
+                              className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                            />
+                          </div>
+
+                          <button
+                            type="submit"
+                            className="w-full bg-primary hover:bg-primary/95 text-on-primary font-bold py-2.5 rounded-xl shadow-sm text-xs cursor-pointer mt-2"
+                          >
+                            Assign Goal to TL
+                          </button>
+                        </form>
+                      </div>
+
+                      {/* Right: Tasks tables */}
+                      <div className="lg:col-span-2 space-y-6">
+                        {/* Pending Tasks */}
+                        <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-4">
+                          <div>
+                            <h2 className="font-bold text-base text-primary">Pending Goals</h2>
+                            <p className="text-[11px] text-on-surface-variant font-medium">Active pending goals assigned to your Team Leaders.</p>
+                          </div>
+
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs border-collapse">
+                              <thead>
+                                <tr className="border-b border-outline-variant/40 bg-surface-container-low/20">
+                                  <th className="py-2 px-3 font-bold text-xs text-on-surface-variant uppercase tracking-wider">TL Name</th>
+                                  <th className="py-2 px-3 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Goal Title</th>
+                                  <th className="py-2 px-3 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Priority</th>
+                                  <th className="py-2 px-3 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Deadline</th>
+                                  <th className="py-2 px-3 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Status</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-outline-variant/20">
+                                {(() => {
+                                  const tlIds = users.filter(u => u.role === 'Team Leader').map(u => u.id);
+                                  const pendingTLTasks = tasks.filter(t => tlIds.includes(t.userId) && t.status !== 'Completed');
+
+                                  if (pendingTLTasks.length === 0) {
+                                    return (
+                                      <tr>
+                                        <td colSpan={5} className="py-6 text-center text-on-surface-variant/70 font-semibold">
+                                          No pending Team Leader goals.
+                                        </td>
+                                      </tr>
+                                    );
+                                  }
+
+                                  return pendingTLTasks.map(t => {
+                                    const tl = users.find(u => u.id === t.userId);
+                                    return (
+                                      <tr key={t.id} className="hover:bg-primary/5 transition-colors">
+                                        <td className="py-2.5 px-3">
+                                          <p className="font-bold text-primary">{tl?.fullName}</p>
+                                          <p className="text-[9px] text-on-surface-variant">@{tl?.username}</p>
+                                        </td>
+                                        <td className="py-2.5 px-3 font-semibold text-on-surface">{t.title}</td>
+                                        <td className="py-2.5 px-3">
+                                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                                            t.priority === 'High' ? 'bg-red-50 text-error' : t.priority === 'Medium' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'
+                                          }`}>
+                                            {t.priority}
+                                          </span>
+                                        </td>
+                                        <td className="py-2.5 px-3 text-on-surface-variant font-medium">{t.deadline}</td>
+                                        <td className="py-2.5 px-3">
+                                          <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
+                                            {t.status}
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    );
+                                  });
+                                })()}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        {/* Completed Tasks */}
+                        <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-4">
+                          <div>
+                            <h2 className="font-bold text-base text-emerald-700">Completed Goals</h2>
+                            <p className="text-[11px] text-on-surface-variant font-medium">Goals successfully completed by Team Leaders.</p>
+                          </div>
+
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs border-collapse">
+                              <thead>
+                                <tr className="border-b border-outline-variant/40 bg-surface-container-low/20">
+                                  <th className="py-2 px-3 font-bold text-xs text-on-surface-variant uppercase tracking-wider">TL Name</th>
+                                  <th className="py-2 px-3 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Goal Title</th>
+                                  <th className="py-2 px-3 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Attachment</th>
+                                  <th className="py-2 px-3 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Completed At</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-outline-variant/20">
+                                {(() => {
+                                  const tlIds = users.filter(u => u.role === 'Team Leader').map(u => u.id);
+                                  const completedTLTasks = tasks.filter(t => tlIds.includes(t.userId) && t.status === 'Completed');
+
+                                  if (completedTLTasks.length === 0) {
+                                    return (
+                                      <tr>
+                                        <td colSpan={4} className="py-6 text-center text-on-surface-variant/70 font-semibold">
+                                          No completed goals yet.
+                                        </td>
+                                      </tr>
+                                    );
+                                  }
+
+                                  return completedTLTasks.map(t => {
+                                    const tl = users.find(u => u.id === t.userId);
+                                    return (
+                                      <tr key={t.id} className="hover:bg-primary/5 transition-colors">
+                                        <td className="py-2.5 px-3">
+                                          <p className="font-bold text-primary">{tl?.fullName}</p>
+                                          <p className="text-[9px] text-on-surface-variant">@{tl?.username}</p>
+                                        </td>
+                                        <td className="py-2.5 px-3 font-semibold text-on-surface">{t.title}</td>
+                                        <td className="py-2.5 px-3 font-medium">
+                                          {t.attachment ? (
+                                            <a
+                                              href={t.attachment.startsWith('http') ? t.attachment : `https://${t.attachment}`}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="inline-flex items-center gap-1 text-primary hover:underline font-bold"
+                                            >
+                                              <FileText className="w-3.5 h-3.5" />
+                                              View
+                                            </a>
+                                          ) : (
+                                            <span className="text-[9px] text-on-surface-variant/60 italic">No document</span>
+                                          )}
+                                        </td>
+                                        <td className="py-2.5 px-3 font-bold text-emerald-700">
+                                          {t.completedAt ? new Date(t.completedAt).toLocaleDateString() : 'Just now'}
+                                        </td>
+                                      </tr>
+                                    );
+                                  });
+                                })()}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. ADMIN: LEAVE MANAGEMENT MODULE */}
+                {currentTab === 'LeaveManagement' && (
+                  <div className="space-y-6 animate-fade-in">
+                    <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-6">
+                      <div>
+                        <h2 className="font-bold text-lg text-primary">Employee Leave Requests</h2>
+                        <p className="text-xs text-on-surface-variant font-medium">Review and process all submitted employee leave applications.</p>
+                      </div>
+
+                      {/* Leaves List */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm border-collapse">
+                          <thead>
+                            <tr className="border-b border-outline-variant/40 bg-surface-container-low/20">
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Employee</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Leave Details</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Duration</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Reason / Description</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Status</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-outline-variant/20">
+                            {leaveRequests.length === 0 ? (
+                              <tr>
+                                <td colSpan={6} className="py-8 text-center text-xs text-on-surface-variant font-medium">
+                                  No leave requests submitted.
+                                </td>
+                              </tr>
+                            ) : (
+                              leaveRequests.map((l) => {
+                                const applicant = users.find(u => u.id === l.userId);
+                                const avatar = employees.find(e => e.id === applicant?.employeeId)?.avatarUrl;
+
+                                return (
+                                  <tr key={l.id} className="hover:bg-primary/5 transition-colors">
+                                    <td className="py-4 px-4">
+                                      <div className="flex items-center gap-3">
+                                        {avatar ? (
+                                          <img src={avatar} alt={applicant?.fullName} className="w-8 h-8 rounded-full object-cover border border-outline-variant" />
+                                        ) : (
+                                          <div className="w-8 h-8 rounded-full border border-primary/20 bg-primary/5 flex items-center justify-center text-primary font-bold text-xs">
+                                            {applicant?.fullName.charAt(0) || 'E'}
+                                          </div>
+                                        )}
+                                        <div>
+                                          <p className="font-bold text-sm text-primary">{applicant ? applicant.fullName : 'Employee'}</p>
+                                          <p className="text-[10px] text-on-surface-variant">{applicant ? applicant.designation : ''}</p>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="py-4 px-4 text-xs font-semibold text-on-surface-variant">
+                                      <div className="flex flex-col">
+                                        <span className="text-primary font-bold">{l.leaveType}</span>
+                                        <span className="text-[10px] font-normal text-on-surface-variant/80">From: {l.fromDate} to {l.toDate}</span>
+                                      </div>
+                                    </td>
+                                    <td className="py-4 px-4 text-xs font-bold text-primary">
+                                      {l.totalDays} days
+                                    </td>
+                                    <td className="py-4 px-4 text-xs text-on-surface-variant">
+                                      <div className="max-w-[240px]">
+                                        <p className="font-bold">"{l.reason}"</p>
+                                        {l.description && <p className="text-[11px] font-medium leading-relaxed mt-0.5">{l.description}</p>}
+                                        {l.attachment && (
+                                          <a
+                                            href={l.attachment}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex items-center gap-1 text-[10px] font-bold text-primary hover:underline mt-1.5"
+                                          >
+                                            <Paperclip className="w-3 h-3" />
+                                            View Document Attachment
+                                          </a>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="py-4 px-4">
+                                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${
+                                        l.status === 'Approved'
+                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                          : l.status === 'Rejected'
+                                          ? 'bg-red-50 text-red-700 border-red-200'
+                                          : 'bg-amber-50 text-amber-700 border-amber-200 animate-pulse'
+                                      }`}>
+                                        {l.status}
+                                      </span>
+                                      {l.adminComment && (
+                                        <span className="block text-[10px] text-on-surface-variant/70 font-medium italic mt-1 max-w-[150px] truncate" title={l.adminComment}>
+                                          C: "{l.adminComment}"
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="py-4 px-4 text-xs">
+                                      {l.status === 'Pending' ? (
+                                        <div className="flex gap-1">
+                                          <button
+                                            onClick={() => {
+                                              setSelectedLeaveForAdminAction(l);
+                                              setAdminLeaveActionType('Approved');
+                                              setAdminLeaveComment('');
+                                              setIsAdminLeaveCommentModalOpen(true);
+                                            }}
+                                            className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded font-bold border border-emerald-200 cursor-pointer"
+                                          >
+                                            Approve
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              setSelectedLeaveForAdminAction(l);
+                                              setAdminLeaveActionType('Rejected');
+                                              setAdminLeaveComment('');
+                                              setIsAdminLeaveCommentModalOpen(true);
+                                            }}
+                                            className="px-2 py-1 bg-red-50 hover:bg-red-100 text-error rounded font-bold border border-error/20 cursor-pointer"
+                                          >
+                                            Reject
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <span className="text-[11px] text-on-surface-variant/60 font-semibold italic">Processed</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 5. ADMIN REPORTS / TRENDS */}
+                {currentTab === 'Reports' && selectedEmployeeForProfile && (
+                  <div className="space-y-6">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                      <div>
+                        <h1 className="font-bold text-2xl text-primary tracking-tight">Attendance analytics: {selectedEmployeeForProfile.name}</h1>
+                        <p className="text-xs text-on-surface-variant font-medium">Verify stats metrics, week trends and historical daywise attendance list.</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <select
+                          value={selectedEmployeeForProfile.id}
+                          onChange={(e) => {
+                            const emp = employees.find(x => x.id === e.target.value);
+                            if (emp) setSelectedEmployeeForProfile(emp);
+                          }}
+                          className="bg-white border border-outline-variant rounded-full px-4 py-2 text-xs font-semibold text-on-surface focus:outline-none"
+                        >
+                          {employees.map(emp => (
+                            <option key={emp.id} value={emp.id}>{emp.name} ({emp.empId})</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Detailed User Profile Header */}
+                    <section className="bg-white border border-outline-variant rounded-2xl p-8 flex flex-col md:flex-row items-center gap-6 shadow-sm">
+                      <div className="relative">
+                        <div className="h-32 w-32 rounded-full ring-4 ring-primary/10 overflow-hidden">
+                          <img
+                            src={selectedEmployeeForProfile.avatarUrl}
+                            alt={selectedEmployeeForProfile.name}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                        <input
+                          type="file"
+                          id="profile-avatar-upload"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file && selectedEmployeeForProfile) {
+                              const reader = new FileReader();
+                              reader.onloadend = async () => {
+                                const base64Url = reader.result as string;
+                                try {
+                                  const { error } = await supabase
+                                    .from('employees')
+                                    .update({ avatar_url: base64Url })
+                                    .eq('id', selectedEmployeeForProfile.id);
+                                  if (error) throw error;
+                                  
+                                  setSelectedEmployeeForProfile(prev => prev ? { ...prev, avatarUrl: base64Url } : null);
+                                  showToast('Profile image uploaded successfully.');
+                                  await fetchData();
+                                } catch (err) {
+                                  console.error(err);
+                                  showToast('Failed to upload profile image.');
+                                }
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                        <button
+                          onClick={async () => {
+                            if (!selectedEmployeeForProfile) return;
+                            const choice = window.confirm("Click 'OK' to upload a photo from your device, or 'Cancel' to enter an image URL instead.");
+                            if (choice) {
+                              document.getElementById('profile-avatar-upload')?.click();
+                            } else {
+                              const newUrl = prompt('Enter image URL for avatar:', selectedEmployeeForProfile.avatarUrl);
+                              if (newUrl) {
+                                try {
+                                  const { error } = await supabase
+                                    .from('employees')
+                                    .update({ avatar_url: newUrl })
+                                    .eq('id', selectedEmployeeForProfile.id);
+                                  if (error) throw error;
+                                  
+                                  setSelectedEmployeeForProfile(prev => prev ? { ...prev, avatarUrl: newUrl } : null);
+                                  showToast('Profile image updated successfully.');
+                                  await fetchData();
+                                } catch (err) {
+                                  console.error(err);
+                                  showToast('Failed to update profile image in database.');
+                                }
+                              }
+                            }
+                          }}
+                          className="absolute bottom-0 right-0 bg-primary text-on-primary rounded-full p-2 shadow-lg active:scale-95 transition-transform cursor-pointer"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <div className="text-center md:text-left space-y-1">
+                        <h2 className="text-3xl font-bold text-[#0f4c81] tracking-tight">{selectedEmployeeForProfile.name}</h2>
+                        <p className="text-lg text-secondary font-semibold">{selectedEmployeeForProfile.role}</p>
+                        <div className="flex flex-wrap justify-center md:justify-start gap-4 mt-2">
+                          <span className="flex items-center gap-1 text-sm text-on-surface-variant">
+                            <span>✉</span>
+                            <span>{selectedEmployeeForProfile.email}</span>
+                          </span>
+                          <span className="flex items-center gap-1 text-sm text-on-surface-variant">
+                            <span>ID:</span>
+                            <span>{selectedEmployeeForProfile.empId}</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="md:ml-auto flex gap-3 flex-wrap">
+                        <button
+                          onClick={() => setIsProfileExportModalOpen(true)}
+                          className="px-6 py-2 border border-primary text-primary font-semibold text-sm rounded-lg hover:bg-primary/5 transition-colors cursor-pointer"
+                        >
+                          Export Profile
+                        </button>
+                        <button
+                          onClick={() => showToast(`Generated comprehensive monthly report for ${selectedEmployeeForProfile.name}.`)}
+                          className="px-6 py-2 bg-primary text-on-primary font-semibold text-sm rounded-lg hover:brightness-110 transition-all cursor-pointer shadow-md"
+                        >
+                          Generate Report
+                        </button>
+                      </div>
+                    </section>
+
+                    {/* Summary Bento Stats */}
+                    <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                      <div className="bg-white border border-outline-variant rounded-2xl p-6 flex items-center gap-4 shadow-sm">
+                        <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
+                          <Check className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Present Days</p>
+                          <p className="text-2xl font-bold">{profileStats.present + profileStats.late}</p>
+                        </div>
+                      </div>
+
+                      <div className="bg-white border border-outline-variant rounded-2xl p-6 flex items-center gap-4 shadow-sm">
+                        <div className="p-3 bg-red-50 text-error rounded-lg">
+                          <X className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Absent Days</p>
+                          <p className="text-2xl font-bold">{profileStats.absent}</p>
+                        </div>
+                      </div>
+
+                      <div className="bg-white border border-outline-variant rounded-2xl p-6 flex items-center gap-4 shadow-sm">
+                        <div className="p-3 bg-amber-50 text-amber-600 rounded-lg">
+                          <Clock className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Late Days</p>
+                          <p className="text-2xl font-bold">{profileStats.late}</p>
+                        </div>
+                      </div>
+
+                      <div className="bg-white border border-outline-variant rounded-2xl p-6 flex items-center gap-4 shadow-sm border-l-4 border-primary">
+                        <div className="flex-1">
+                          <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Attendance Rate</p>
+                          <p className="text-2xl font-bold text-primary">{profileStats.rate}</p>
+                        </div>
+                        <div className="relative h-12 w-12 shrink-0">
+                          <svg className="h-full w-full" viewBox="0 0 36 36">
+                            <path
+                              className="text-slate-100 stroke-current"
+                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                              fill="none"
+                              strokeWidth="3.5"
+                            ></path>
+                            <path
+                              className="text-primary stroke-current"
+                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                              fill="none"
+                              strokeDasharray={`${parseFloat(profileStats.rate)}, 100`}
+                              strokeLinecap="round"
+                              strokeWidth="3.5"
+                            ></path>
+                          </svg>
+                        </div>
+                      </div>
+                    </section>
+
+                    {/* Trends & Distribution charts */}
+                    <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      {/* Distribution circle */}
+                      <div className="bg-white border border-outline-variant rounded-2xl p-6 lg:col-span-1 shadow-sm">
+                        <h3 className="font-bold text-lg text-on-surface mb-6">Status Distribution</h3>
+                        <div className="relative h-64 flex items-center justify-center">
+                          <div className="relative h-48 w-48 rounded-full border-[20px] border-emerald-500 flex items-center justify-center flex-col">
+                            <span className="font-bold text-2xl text-primary">{profileStats.total}</span>
+                            <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Total Days</span>
+                          </div>
+                        </div>
+                        <div className="space-y-2 mt-4 text-sm font-semibold">
+                          <div className="flex items-center justify-between">
+                            <span className="flex items-center gap-2"><span className="w-3 h-3 bg-emerald-500 rounded-full"></span> Present</span>
+                            <span>{profileStats.presentPercent}%</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="flex items-center gap-2"><span className="w-3 h-3 bg-amber-500 rounded-full"></span> Late</span>
+                            <span>{profileStats.latePercent}%</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="flex items-center gap-2"><span className="w-3 h-3 bg-red-500 rounded-full"></span> Absent</span>
+                            <span>{profileStats.absentPercent}%</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Attendance Trends chart */}
+                      <div className="bg-white border border-outline-variant rounded-2xl p-6 lg:col-span-2 shadow-sm">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                          <h3 className="font-bold text-lg text-on-surface capitalize">{trendFilter} {chartMetric === 'status' ? 'Attendance' : 'Working Hours'} Trend</h3>
+                          
+                          <div className="flex flex-wrap gap-2">
+                            {/* Metric Toggle */}
+                            <div className="flex gap-1 bg-surface-container-low p-1 rounded-lg text-[11px]">
+                              <button 
+                                onClick={() => {
+                                  setChartMetric('status');
+                                  showToast('Showing attendance status');
+                                }}
+                                className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${chartMetric === 'status' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/30'}`}
+                              >
+                                Status
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  setChartMetric('hours');
+                                  showToast('Showing working hours vs 8h average');
+                                }}
+                                className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${chartMetric === 'hours' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/30'}`}
+                              >
+                                Working Hours
+                              </button>
+                            </div>
+
+                            {/* Trend Filter Toggle */}
+                            <div className="flex gap-1 bg-surface-container-low p-1 rounded-lg text-[11px]">
+                              <button 
+                                onClick={() => setTrendFilter('weekly')}
+                                className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${trendFilter === 'weekly' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/30'}`}
+                              >
+                                Weekly
+                              </button>
+                              <button 
+                                onClick={() => setTrendFilter('monthly')}
+                                className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${trendFilter === 'monthly' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/30'}`}
+                              >
+                                Monthly
+                              </button>
+                              <button 
+                                onClick={() => setTrendFilter('yearly')}
+                                className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${trendFilter === 'yearly' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/30'}`}
+                              >
+                                Yearly
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Simulating custom vector bars based on trendFilter */}
+                        <div className="h-64 pt-8 pb-2 pl-12 pr-4 border-b border-outline-variant/30">
+                          <div className="relative h-full w-full flex items-end justify-between gap-4">
+                            {/* 8-Hour Average Dashed Target Line */}
+                            {chartMetric === 'hours' && (
+                              <div 
+                                className="absolute left-0 right-0 border-t-2 border-dashed border-red-500/40 z-20 pointer-events-none transition-all duration-300"
+                                style={{ bottom: `${(8 / maxHoursScale) * 100}%` }}
+                              >
+                                <span className="absolute right-full mr-2 -top-2 bg-red-50 text-red-600 px-1.5 py-0.5 rounded text-[10px] font-extrabold border border-red-200/60 whitespace-nowrap shadow-sm">
+                                  8hr
+                                </span>
+                              </div>
+                            )}
+
+                            {chartData.map((item, index) => {
+                              const hasData = item.total > 0;
+                              
+                              // Metric-specific variables
+                              const w = item.avgWorkingHours || 0;
+                              const exceeds = w >= 8;
+                              const workedPct = (Math.min(w, 8) / maxHoursScale) * 100;
+                              const excessPct = exceeds ? ((w - 8) / maxHoursScale) * 100 : 0;
+                              const deficitPct = !exceeds ? ((8 - w) / maxHoursScale) * 100 : 0;
+
+                              return (
+                                <div key={index} className="flex-1 flex flex-col justify-end h-full relative group">
+                                  {/* Stacked Bar container */}
+                                  {hasData ? (
+                                    <div className={`w-full flex flex-col justify-end rounded-t-md overflow-hidden transition-all duration-300 ${item.isToday || item.isCurrent ? 'ring-2 ring-primary ring-offset-2' : ''}`} style={{ height: '100%' }}>
+                                      {chartMetric === 'status' ? (
+                                        <>
+                                          {/* Present Segment */}
+                                          {item.presentPercent > 0 && (
+                                            <div 
+                                              className="bg-emerald-500 hover:brightness-105 transition-all" 
+                                              style={{ height: `${item.presentPercent}%` }}
+                                              title={`Present: ${item.presentPercent.toFixed(0)}%`}
+                                            />
+                                          )}
+                                          {/* Late Segment */}
+                                          {item.latePercent > 0 && (
+                                            <div 
+                                              className="bg-amber-500 hover:brightness-105 transition-all" 
+                                              style={{ height: `${item.latePercent}%` }}
+                                              title={`Late: ${item.latePercent.toFixed(0)}%`}
+                                            />
+                                          )}
+                                          {/* Absent Segment */}
+                                          {item.absentPercent > 0 && (
+                                            <div 
+                                              className="bg-red-500 hover:brightness-105 transition-all" 
+                                              style={{ height: `${item.absentPercent}%` }}
+                                              title={`Absent: ${item.absentPercent.toFixed(0)}%`}
+                                            />
+                                          )}
+                                        </>
+                                      ) : (
+                                        <>
+                                          {exceeds ? (
+                                            <>
+                                              {/* Blue Overtime Segment */}
+                                              {excessPct > 0 && (
+                                                <div 
+                                                  className="bg-blue-500 hover:brightness-105 transition-all" 
+                                                  style={{ height: `${excessPct}%` }}
+                                                />
+                                              )}
+                                              {/* Standard Worked Base Segment */}
+                                              {workedPct > 0 && (
+                                                <div 
+                                                  className="bg-slate-300 hover:brightness-105 transition-all" 
+                                                  style={{ height: `${workedPct}%` }}
+                                                />
+                                              )}
+                                            </>
+                                          ) : (
+                                            <>
+                                              {/* Yellow Deficit Segment */}
+                                              {deficitPct > 0 && (
+                                                <div 
+                                                  className="bg-yellow-400 hover:brightness-105 transition-all" 
+                                                  style={{ height: `${deficitPct}%` }}
+                                                />
+                                              )}
+                                              {/* Worked Base Segment */}
+                                              {workedPct > 0 && (
+                                                <div 
+                                                  className="bg-slate-300 hover:brightness-105 transition-all" 
+                                                  style={{ height: `${workedPct}%` }}
+                                                />
+                                              )}
+                                            </>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    /* No Data placeholder (e.g. future date or weekend) */
+                                    <div className="w-full h-1 bg-outline-variant/20 rounded-full" />
+                                  )}
+
+                                  {/* Tooltip on hover */}
+                                  {hasData && (
+                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-900/95 backdrop-blur-md text-white text-[10px] p-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10 whitespace-nowrap border border-white/10">
+                                      {chartMetric === 'status' ? (
+                                        <>
+                                          <p className="font-bold text-center border-b border-white/10 pb-1 mb-1">{item.label} Attendance</p>
+                                          <p className="flex items-center gap-1.5"><span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Present: {item.present} ({item.presentPercent.toFixed(0)}%)</p>
+                                          <p className="flex items-center gap-1.5"><span className="w-2 h-2 bg-amber-500 rounded-full"></span> Late: {item.late} ({item.latePercent.toFixed(0)}%)</p>
+                                          <p className="flex items-center gap-1.5"><span className="w-2 h-2 bg-red-500 rounded-full"></span> Absent: {item.absent} ({item.absentPercent.toFixed(0)}%)</p>
+                                          {item.minsLate > 0 && (
+                                            <p className="text-amber-400 font-bold border-t border-white/10 pt-1 mt-1 flex items-center gap-1">
+                                              ⚠️ {trendFilter === 'Weekly' ? `Late by ${item.minsLate} mins` : `Late total: ${item.minsLate} mins`}
+                                            </p>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <>
+                                          <p className="font-bold text-center border-b border-white/10 pb-1 mb-1">{item.label} Working Hours</p>
+                                          <p className="flex items-center gap-1.5">
+                                            <span className="w-2 h-2 bg-slate-300 rounded-full"></span> 
+                                            Worked: {w.toFixed(2)}h
+                                          </p>
+                                          {w >= 8 ? (
+                                            <p className="flex items-center gap-1.5 text-blue-400 font-semibold">
+                                              <span className="w-2 h-2 bg-blue-500 rounded-full"></span> 
+                                              Exceeds Average: +{(w - 8).toFixed(2)}h
+                                            </p>
+                                          ) : (
+                                            <p className="flex items-center gap-1.5 text-yellow-400 font-semibold">
+                                              <span className="w-2 h-2 bg-yellow-400 rounded-full"></span> 
+                                              Deficit Hours: -{(8 - w).toFixed(2)}h
+                                            </p>
+                                          )}
+                                          {item.minsLate > 0 && (
+                                            <p className="text-amber-400 font-bold border-t border-white/10 pt-1 mt-1 flex items-center gap-1">
+                                              ⚠️ {trendFilter === 'Weekly' ? `Late by ${item.minsLate} mins` : `Late total: ${item.minsLate} mins`}
+                                            </p>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
+                                  
+                                  {/* Weekend label indicator */}
+                                  {item.isWeekend && (
+                                    <span className="absolute inset-0 flex items-center justify-center text-[9px] font-semibold text-on-surface-variant/40 select-none pointer-events-none rotate-90 sm:rotate-0">
+                                      Weekend
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* X-Axis labels */}
+                        <div className="flex justify-between pl-12 pr-4 mt-4 text-xs font-semibold text-on-surface-variant">
+                          {chartData.map((item, index) => (
+                            <span 
+                              key={index} 
+                              className={`flex-1 text-center truncate ${item.isToday || item.isCurrent ? 'text-primary font-bold' : ''}`}
+                            >
+                              {item.label}
+                            </span>
+                          ))}
+                        </div>
+
+                        {/* Legend */}
+                        <div className="flex justify-center gap-6 mt-6 pt-4 border-t border-outline-variant/30 text-xs font-semibold">
+                          {chartMetric === 'status' ? (
+                            <>
+                              <span className="flex items-center gap-2 text-on-surface-variant">
+                                <span className="w-3 h-3 bg-emerald-500 rounded-full"></span> Present
+                              </span>
+                              <span className="flex items-center gap-2 text-on-surface-variant">
+                                <span className="w-3 h-3 bg-amber-500 rounded-full"></span> Late
+                              </span>
+                              <span className="flex items-center gap-2 text-on-surface-variant">
+                                <span className="w-3 h-3 bg-red-500 rounded-full"></span> Absent
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="flex items-center gap-2 text-on-surface-variant">
+                                <span className="w-3 h-3 bg-slate-300 rounded-full"></span> Standard Base (8h)
+                              </span>
+                              <span className="flex items-center gap-2 text-on-surface-variant">
+                                <span className="w-3 h-3 bg-blue-500 rounded-full"></span> Overtime Exceeded (Blue)
+                              </span>
+                              <span className="flex items-center gap-2 text-on-surface-variant">
+                                <span className="w-3 h-3 bg-yellow-400 rounded-full"></span> Deficit Below Average (Yellow)
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </section>
+
+                    {/* Individual Logs History Table */}
+                    <section className="bg-white border border-outline-variant rounded-2xl overflow-hidden shadow-sm">
+                      <div className="px-6 py-4 border-b border-outline-variant bg-white">
+                        <h3 className="font-bold text-lg text-[#0f4c81]">Personal History Logs</h3>
+                      </div>
+                      
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 text-on-surface-variant text-xs font-semibold uppercase tracking-wider">
+                              <th className="px-6 py-3">Date</th>
+                              <th className="px-6 py-3">Clock In</th>
+                              <th className="px-6 py-3">Clock Out</th>
+                              <th className="px-6 py-3">Working Hours</th>
+                              <th className="px-6 py-3">Break</th>
+                              <th className="px-6 py-3">Extra Hours</th>
+                              <th className="px-6 py-3">Break Allowance</th>
+                              <th className="px-6 py-3">Productivity</th>
+                              <th className="px-6 py-3">Remark</th>
+                              <th className="px-6 py-3">Status</th>
+                              <th className="px-6 py-3 text-center">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-outline-variant/30">
+                            {attendanceLogs
+                              .filter(log => log.employeeId === selectedEmployeeForProfile.id)
+                              .map((log) => {
+                                const isEditing = editingLogId === log.id;
+                                return (
+                                  <tr key={log.id} className="hover:bg-primary/5 transition-colors">
+                                    <td className="px-6 py-4 font-semibold text-sm">{log.date}</td>
+                                    <td className="px-6 py-4 text-sm text-on-surface-variant">
+                                      {isEditing ? (
+                                        <input
+                                          type="time"
+                                          disabled={editStatus === 'Absent'}
+                                          value={editClockIn}
+                                          onChange={(e) => setEditClockIn(e.target.value)}
+                                          className="bg-white border border-outline-variant rounded p-1 text-sm outline-none focus:ring-1 focus:ring-primary w-28"
+                                        />
+                                      ) : (
+                                        log.clockIn
+                                      )}
+                                    </td>
+                                    <td className="px-6 py-4 text-sm text-on-surface-variant">
+                                      {isEditing ? (
+                                        <input
+                                          type="time"
+                                          disabled={editStatus === 'Absent'}
+                                          value={editClockOut}
+                                          onChange={(e) => setEditClockOut(e.target.value)}
+                                          className="bg-white border border-outline-variant rounded p-1 text-sm outline-none focus:ring-1 focus:ring-primary w-28"
+                                        />
+                                      ) : selectedEmployeeForProfile && log.date === todayDateString && (log.status === 'Present' || log.status === 'Late') && (log.clockOut === '--:--' || !log.clockOut) ? (
+                                        <button
+                                          onClick={() => handleClockOut(selectedEmployeeForProfile.id)}
+                                          className="px-2 py-0.5 bg-primary text-on-primary font-bold text-[10px] rounded hover:brightness-110 active:scale-95 transition-all cursor-pointer shadow-sm"
+                                        >
+                                          Clock Out
+                                        </button>
+                                      ) : (
+                                        log.clockOut
+                                      )}
+                                    </td>
+                                    <td className="px-6 py-4 text-sm font-semibold text-primary">
+                                      {isEditing ? (
+                                        calculateDuration(
+                                          editStatus === 'Absent' ? '--:--' : time24To12(editClockIn),
+                                          editStatus === 'Absent' ? '--:--' : time24To12(editClockOut)
+                                        )
+                                      ) : (
+                                        log.totalHours.split('|')[0]
+                                      )}
+                                    </td>
+                                    <td className="px-6 py-4">
+                                      <select
+                                        disabled={log.status === 'Absent' || isEditing}
+                                        value={getBreakMinutes(log.totalHours)}
+                                        onChange={(e) => handleUpdateBreakMinutes(log.id, parseInt(e.target.value, 10))}
+                                        className="bg-white border border-outline-variant rounded px-2 py-1 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-white"
+                                      >
+                                        <option value="0">0 mins</option>
+                                        <option value="5">5 mins</option>
+                                        <option value="10">10 mins</option>
+                                        <option value="15">15 mins</option>
+                                        <option value="30">30 mins</option>
+                                        <option value="45">45 mins</option>
+                                        <option value="60">60 mins</option>
+                                        <option value="90">90 mins</option>
+                                        <option value="120">120 mins</option>
+                                      </select>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                      {isEditing ? (
+                                        <div className="flex items-center gap-1">
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            value={editExtraHoursHrs}
+                                            onChange={(e) => setEditExtraHoursHrs(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                                            className="bg-white border border-outline-variant rounded p-1 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary w-11 text-center bg-white"
+                                          />
+                                          <span className="text-[10px] text-on-surface-variant font-bold">h</span>
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            max="59"
+                                            value={editExtraHoursMins}
+                                            onChange={(e) => setEditExtraHoursMins(Math.max(0, Math.min(59, parseInt(e.target.value, 10) || 0)))}
+                                            className="bg-white border border-outline-variant rounded p-1 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary w-11 text-center bg-white"
+                                          />
+                                          <span className="text-[10px] text-on-surface-variant font-bold">m</span>
+                                        </div>
+                                      ) : (
+                                        getExtraHoursStr(log.totalHours) === '0h 00m' ? (
+                                          <span className="text-on-surface-variant/40 italic">--</span>
+                                        ) : (
+                                          getExtraHoursStr(log.totalHours)
+                                        )
+                                      )}
+                                    </td>
+                                    <td className="px-6 py-4">
+                                      <select
+                                        disabled={log.status === 'Absent' || isEditing}
+                                        value={getBreakAllowanceMinutes(log.totalHours)}
+                                        onChange={(e) => handleUpdateBreakAllowance(log.id, parseInt(e.target.value, 10))}
+                                        className="bg-white border border-outline-variant rounded px-2 py-1 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-white"
+                                      >
+                                        <option value="0">0 mins</option>
+                                        <option value="15">15 mins</option>
+                                        <option value="45">45 mins</option>
+                                        <option value="60">60 mins</option>
+                                      </select>
+                                    </td>
+                                    <td className="px-6 py-4 text-sm font-bold text-[#0f4c81]">
+                                      {isEditing ? (
+                                        getProductiveHoursStr(
+                                          calculateDuration(
+                                            editStatus === 'Absent' ? '--:--' : time24To12(editClockIn),
+                                            editStatus === 'Absent' ? '--:--' : time24To12(editClockOut)
+                                          ) + `|${getBreakMinutes(log.totalHours)}|${editRemark.trim()}|${editExtraHoursHrs * 60 + editExtraHoursMins}|${getBreakAllowanceMinutes(log.totalHours)}`
+                                        )
+                                      ) : (
+                                        getProductiveHoursStr(log.totalHours)
+                                      )}
+                                    </td>
+                                    <td className="px-6 py-4 text-sm text-on-surface-variant max-w-[180px] truncate">
+                                      {isEditing ? (
+                                        <input
+                                          type="text"
+                                          value={editRemark}
+                                          onChange={(e) => setEditRemark(e.target.value)}
+                                          placeholder="Add remark..."
+                                          className="bg-white border border-outline-variant rounded p-1 text-sm outline-none focus:ring-1 focus:ring-primary w-40"
+                                        />
+                                      ) : (
+                                        getRemark(log.totalHours) || <span className="text-on-surface-variant/40 italic">--</span>
+                                      )}
+                                    </td>
+                                    <td className="px-6 py-4">
+                                      {isEditing ? (
+                                        <select
+                                          value={editStatus}
+                                          onChange={(e) => {
+                                            const newStatus = e.target.value as 'Present' | 'Absent' | 'Late';
+                                            setEditStatus(newStatus);
+                                            if (newStatus === 'Absent') {
+                                              setEditClockIn('');
+                                              setEditClockOut('');
+                                            } else {
+                                              if (!editClockIn) setEditClockIn('09:00');
+                                              if (!editClockOut) setEditClockOut('17:00');
+                                            }
+                                          }}
+                                          className="bg-white border border-outline-variant rounded p-1.5 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary"
+                                        >
+                                          <option value="Present">Present</option>
+                                          <option value="Late">Late</option>
+                                          <option value="Absent">Absent</option>
+                                        </select>
+                                      ) : (
+                                         <div className="flex flex-col items-start gap-1">
+                                           <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                                             log.status === 'Present' ? 'bg-emerald-100 text-emerald-800' :
+                                             log.status === 'Late' ? 'bg-amber-100 text-amber-800' :
+                                             'bg-red-100 text-red-800'
+                                           }`}>
+                                             {log.status}
+                                           </span>
+                                           {log.status === 'Late' && log.clockIn && calculateMinutesLate(log.clockIn) > 0 && (
+                                             <span className="text-[10px] text-amber-600 font-semibold whitespace-nowrap">
+                                               Late by {calculateMinutesLate(log.clockIn)} mins
+                                             </span>
+                                           )}
+                                         </div>
+                                      )}
+                                    </td>
+                                    <td className="px-6 py-4 text-center">
+                                      {isEditing ? (
+                                        <div className="flex justify-center items-center gap-1.5">
+                                          <button
+                                            title="Save Changes"
+                                            onClick={() => handleSaveAttendanceEdit(log.id)}
+                                            className="p-1.5 rounded-full border border-emerald-600 bg-emerald-600 text-white hover:brightness-110 active:scale-95 transition-all shadow-sm cursor-pointer"
+                                          >
+                                            <Check className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button
+                                            title="Cancel"
+                                            onClick={() => setEditingLogId(null)}
+                                            className="p-1.5 rounded-full border border-outline-variant text-on-surface-variant hover:bg-slate-100 active:scale-95 transition-all cursor-pointer"
+                                          >
+                                            <X className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <div className="flex justify-center items-center gap-1.5">
+                                          <button
+                                            title="Edit Attendance Log"
+                                            onClick={() => {
+                                              setEditingLogId(log.id);
+                                              setEditClockIn(time12To24(log.clockIn));
+                                              setEditClockOut(time12To24(log.clockOut));
+                                              setEditStatus(log.status as 'Present' | 'Absent' | 'Late');
+                                              setEditRemark(getRemark(log.totalHours));
+                                              const extraMins = getExtraHoursMinutes(log.totalHours);
+                                              setEditExtraHoursHrs(Math.floor(extraMins / 60));
+                                              setEditExtraHoursMins(extraMins % 60);
+                                            }}
+                                            className="p-1.5 rounded-full border border-outline-variant text-primary hover:bg-primary/10 hover:border-primary active:scale-95 transition-all cursor-pointer"
+                                          >
+                                            <Edit2 className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button
+                                            title="Delete Attendance Log"
+                                            onClick={() => handleDeleteAttendance(log.id)}
+                                            className="p-1.5 rounded-full border border-outline-variant text-error hover:bg-red-50 hover:border-error transition-all cursor-pointer"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="p-4 bg-slate-50 border-t text-center">
+                        <button onClick={() => showToast('All logs fully loaded.')} className="font-bold text-sm text-primary hover:underline">
+                          View More Months
+                        </button>
+                      </div>
+                    </section>
+                  </div>
+                )}
+
+                {/* Empty profile fallback when no employee is selected/available */}
+                {currentTab === 'Reports' && !selectedEmployeeForProfile && (
+                  <div className="bg-white border border-outline-variant rounded-2xl p-12 text-center text-on-surface-variant font-medium shadow-sm">
+                    <User className="w-16 h-16 text-outline mx-auto mb-4" />
+                    <h3 className="text-xl font-bold text-primary mb-2">No Profile Selected</h3>
+                    <p className="text-sm max-w-md mx-auto">
+                      Please select an employee from the Dashboard or Users tab to view their detailed reports and history.
+                    </p>
+                  </div>
+                )}
+
+                {/* 6. EMPLOYEE / MANAGER DASHBOARD */}
+                {currentTab === 'EmpDashboard' && currentUser && (
+                  <div className="space-y-6 animate-fade-in">
+                    {/* Welcome banner */}
+                    <div className="bg-gradient-to-r from-[#0f4c81] to-[#1e293b] p-6 rounded-2xl text-white shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                      <div>
+                        <h1 className="font-bold text-2xl tracking-tight">Welcome back, {currentUser.fullName}!</h1>
+                        <p className="text-xs text-white/80 font-medium mt-1">{currentUser.designation} • {currentUser.department} Department</p>
+                      </div>
+                      <div className="flex flex-col items-end">
+                        <span className="text-xs font-bold text-white/70">Current Session Details:</span>
+                        <span className="text-sm font-bold mt-0.5">{currentDateTime}</span>
+                      </div>
+                    </div>
+
+                    {/* Clock In / Out Banner */}
+                    <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+                      <div className="space-y-2">
+                        <span className="text-xs text-on-surface-variant font-bold uppercase tracking-wider">Attendance Trigger</span>
+                        <h3 className="font-bold text-lg text-primary">Daily Clock In & Out</h3>
+                        <p className="text-xs text-on-surface-variant font-medium">Record your daily active work times directly into attendance logs.</p>
+                      </div>
+
+                      <div className="flex flex-col gap-1 items-center justify-center p-4 bg-surface-container-low/40 rounded-xl border border-outline-variant/30">
+                        {(() => {
+                          if (currentUser.internType === 'Offline Intern') {
+                            return (
+                              <>
+                                <span className="text-xs font-bold text-on-surface-variant uppercase">Biometric Logging</span>
+                                <span className="text-sm font-semibold text-on-surface-variant mt-0.5">Please clock in at the office terminal</span>
+                              </>
+                            );
+                          }
+                          const log = attendanceLogs.find(l => l.employeeId === currentUser.employeeId && l.date === todayDateString);
+                          if (!log) {
+                            return (
+                              <>
+                                <span className="text-xs font-bold text-red-600 animate-pulse uppercase">Not Clocked In Yet</span>
+                                <span className="text-sm font-semibold text-on-surface-variant mt-0.5">Required: Clock in before 12:00 PM</span>
+                              </>
+                            );
+                          } else if (log.clockOut === '--:--') {
+                            return (
+                              <>
+                                <span className="text-xs font-bold text-amber-600 animate-pulse uppercase">Currently Clocked In</span>
+                                <span className="text-sm font-bold text-primary mt-0.5">In time: {log.clockIn}</span>
+                              </>
+                            );
+                          } else {
+                            return (
+                              <>
+                                <span className="text-xs font-bold text-emerald-600 uppercase">Shift Completed</span>
+                                <span className="text-xs text-on-surface-variant mt-0.5">In: {log.clockIn} • Out: {log.clockOut}</span>
+                                <span className="text-xs font-bold text-primary">Duration: {log.totalHours.split('|')[0]}</span>
+                              </>
+                            );
+                          }
+                        })()}
+                      </div>
+
+                      <div className="flex justify-center">
+                        {(() => {
+                          if (currentUser.internType === 'Offline Intern') {
+                            return (
+                              <button
+                                disabled
+                                className="w-full max-w-[200px] py-4 rounded-xl text-sm font-bold bg-surface-container text-on-surface-variant/45 cursor-not-allowed shadow-none border border-outline-variant/30 flex items-center justify-center gap-2"
+                              >
+                                <Clock className="w-4 h-4" />
+                                Offline Log Only
+                              </button>
+                            );
+                          }
+                          const log = attendanceLogs.find(l => l.employeeId === currentUser.employeeId && l.date === todayDateString);
+                          const isCompleted = log && log.clockOut !== '--:--';
+
+                          return (
+                            <button
+                              onClick={handleEmployeeClockToggle}
+                              disabled={isCompleted}
+                              className={`w-full max-w-[200px] py-4 rounded-xl text-sm font-bold transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 cursor-pointer ${
+                                isCompleted
+                                  ? 'bg-surface-container text-on-surface-variant/40 cursor-not-allowed shadow-none border border-outline-variant/30'
+                                  : !log
+                                  ? 'bg-primary text-on-primary hover:bg-primary/90'
+                                  : 'bg-amber-500 hover:bg-amber-600 text-white'
+                              }`}
+                            >
+                              <Clock className="w-4 h-4" />
+                              {!log ? 'Clock In' : isCompleted ? 'Completed' : 'Clock Out'}
+                            </button>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* Bento metrics */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="bg-white p-4 rounded-xl border border-outline-variant/60 shadow-sm">
+                        <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Pending Tasks</p>
+                        <p className="text-3xl font-extrabold text-primary mt-1">{employeeStats.pendingTasks}</p>
+                        <button onClick={() => setCurrentTab('PendingTasks')} className="text-[10px] text-primary font-bold hover:underline mt-1 cursor-pointer">
+                          View Pending Tasks
+                        </button>
+                      </div>
+
+                      <div className="bg-white p-4 rounded-xl border border-outline-variant/60 shadow-sm">
+                        <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Completed Tasks</p>
+                        <p className="text-3xl font-extrabold text-emerald-600 mt-1">{employeeStats.completedTasks}</p>
+                        <button onClick={() => setCurrentTab('CompletedTasks')} className="text-[10px] text-emerald-600 font-bold hover:underline mt-1 cursor-pointer">
+                          View History Board
+                        </button>
+                      </div>
+
+                      <div className="bg-white p-4 rounded-xl border border-outline-variant/60 shadow-sm">
+                        <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Approved Leaves</p>
+                        <p className="text-3xl font-extrabold text-indigo-600 mt-1">{employeeStats.approvedLeaves}</p>
+                        <p className="text-[11px] text-on-surface-variant/80 font-medium mt-1">Total: {employeeStats.totalLeavesDays} days</p>
+                      </div>
+
+                      <div className="bg-white p-4 rounded-xl border border-outline-variant/60 shadow-sm">
+                        <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Leave Balances</p>
+                        <p className="text-xl font-extrabold text-on-surface mt-1.5 flex flex-wrap gap-1.5">
+                          <span className="text-xs bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200">Casual: {15 - leaveRequests.filter(l => l.userId === currentUser.id && l.leaveType === 'Casual' && l.status === 'Approved').reduce((acc, curr) => acc + curr.totalDays, 0)}</span>
+                          <span className="text-xs bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-200">Sick: {10 - leaveRequests.filter(l => l.userId === currentUser.id && l.leaveType === 'Sick' && l.status === 'Approved').reduce((acc, curr) => acc + curr.totalDays, 0)}</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Top Tasks list */}
+                      <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-4">
+                        <div className="flex justify-between items-center">
+                          <h3 className="font-bold text-sm text-primary uppercase tracking-wider">Urgent Active Tasks</h3>
+                          <button
+                            onClick={() => setCurrentTab('MyTasks')}
+                            className="text-[11px] font-bold text-primary hover:underline cursor-pointer"
+                          >
+                            All Tasks
+                          </button>
+                        </div>
+
+                        <div className="divide-y divide-outline-variant/10">
+                          {tasks.filter(t => t.userId === currentUser.id && t.status !== 'Completed').slice(0, 3).length === 0 ? (
+                            <p className="py-6 text-center text-xs text-on-surface-variant font-semibold">No pending tasks. Great job!</p>
+                          ) : (
+                            tasks.filter(t => t.userId === currentUser.id && t.status !== 'Completed').slice(0, 3).map(t => (
+                              <div key={t.id} className="py-3 flex justify-between items-center">
+                                <div>
+                                  <p className="font-bold text-sm text-on-surface">{t.title}</p>
+                                  <p className="text-[11px] text-on-surface-variant font-medium mt-0.5">Due: {t.deadline}</p>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                  t.priority === 'High' ? 'bg-red-50 text-error' : t.priority === 'Medium' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'
+                                }`}>
+                                  {t.priority}
+                                </span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Recent Alerts Feed */}
+                      <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-4">
+                        <h3 className="font-bold text-sm text-primary uppercase tracking-wider">Activity & Notifications</h3>
+                        <div className="divide-y divide-outline-variant/10 max-h-[220px] overflow-y-auto pr-1">
+                          {notifications.filter(n => n.userId === currentUser.id).slice(0, 4).length === 0 ? (
+                            <p className="py-8 text-center text-xs text-on-surface-variant font-semibold">No recent activity logs.</p>
+                          ) : (
+                            notifications.filter(n => n.userId === currentUser.id).slice(0, 4).map(n => (
+                              <div key={n.id} className="py-3 flex gap-2 items-start">
+                                <span className={`w-2 h-2 mt-1.5 rounded-full ${n.isRead ? 'bg-on-surface-variant/30' : 'bg-primary animate-pulse'}`}></span>
+                                <div>
+                                  <p className="font-semibold text-xs text-on-surface">{n.title}</p>
+                                  <p className="text-[11px] text-on-surface-variant leading-relaxed mt-0.5">{n.message}</p>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 6.5. TEAM LEADER DASHBOARD */}
+                {currentTab === 'TeamLeaderDashboard' && currentUser && currentUser.role === 'Team Leader' && (
+                  <div className="space-y-6 animate-fade-in">
+                    {/* Welcome Banner */}
+                    <div className="bg-gradient-to-r from-teal-700 to-slate-800 p-6 rounded-2xl text-white shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                      <div>
+                        <h1 className="font-bold text-2xl tracking-tight">Team Leader Dashboard</h1>
+                        <p className="text-xs text-white/80 font-medium mt-1">Manage assigned interns, create tasks, and review completions</p>
+                      </div>
+                      <div className="flex flex-col items-end">
+                        <span className="text-xs font-bold text-white/70">Current Session Details:</span>
+                        <span className="text-sm font-bold mt-0.5">{currentDateTime}</span>
+                      </div>
+                    </div>
+
+                    {/* Assigned Interns Section */}
+                    <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-6">
+                      <div>
+                        <h2 className="font-bold text-lg text-primary">Your Assigned Interns</h2>
+                        <p className="text-xs text-on-surface-variant font-medium">Assigned interns under your direct leadership.</p>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="border-b border-outline-variant/40 bg-surface-container-low/20">
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Intern Name</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Email</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Intern Type</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Status</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-outline-variant/20">
+                            {users.filter(u => u.managerId === currentUser.id).length === 0 ? (
+                              <tr>
+                                <td colSpan={5} className="py-6 text-center text-on-surface-variant/70 font-medium">
+                                  No interns assigned to you yet. Admin can assign them under your profile in the <strong className="text-primary">User Management</strong> section.
+                                </td>
+                              </tr>
+                            ) : (
+                              users.filter(u => u.managerId === currentUser.id).map(intern => {
+                                const avatar = employees.find(e => e.id === intern.employeeId)?.avatarUrl;
+                                return (
+                                  <tr key={intern.id} className="hover:bg-primary/5 transition-colors">
+                                    <td className="py-3 px-4">
+                                      <div className="flex items-center gap-3">
+                                        {avatar ? (
+                                          <img src={avatar} alt={intern.fullName} className="w-8 h-8 rounded-full object-cover border border-outline-variant" />
+                                        ) : (
+                                          <div className="w-8 h-8 rounded-full border border-primary/20 bg-primary/5 flex items-center justify-center text-primary font-bold">
+                                            {intern.fullName.charAt(0)}
+                                          </div>
+                                        )}
+                                        <div>
+                                          <p className="font-bold text-primary">{intern.fullName}</p>
+                                          <p className="text-[10px] text-on-surface-variant font-medium">@{intern.username}</p>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="py-3 px-4 font-semibold text-on-surface-variant">{intern.email}</td>
+                                    <td className="py-3 px-4">
+                                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                        intern.internType === 'Online Intern'
+                                          ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                          : 'bg-orange-50 text-orange-700 border-orange-200'
+                                      }`}>
+                                        {intern.internType || 'Online Intern'}
+                                      </span>
+                                    </td>
+                                    <td className="py-3 px-4">
+                                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${
+                                        intern.status === 'Active'
+                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                          : 'bg-red-50 text-red-700 border-red-200'
+                                      }`}>
+                                        {intern.status}
+                                      </span>
+                                    </td>
+                                    <td className="py-3 px-4">
+                                      <button
+                                        onClick={() => {
+                                          setNewTaskTitle('');
+                                          setNewTaskDesc('');
+                                          setNewTaskPriority('Medium');
+                                          setNewTaskDeadline(new Date().toISOString().split('T')[0]);
+                                          setNewTaskAttachment('');
+                                          setNewTaskAssigneeId(intern.id);
+                                          setIsAddTaskModalOpen(true);
+                                        }}
+                                        className="inline-flex items-center gap-1 bg-primary hover:bg-primary/90 text-on-primary px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm cursor-pointer"
+                                      >
+                                        <Plus className="w-3.5 h-3.5" />
+                                        Create Task
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Intern Completed Tasks Section */}
+                    <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-6">
+                      <div>
+                        <h2 className="font-bold text-lg text-emerald-700">Completed Tasks by Interns</h2>
+                        <p className="text-xs text-on-surface-variant font-medium">Review deliverables and completion documentation uploaded by your interns.</p>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="border-b border-outline-variant/40 bg-surface-container-low/20">
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Intern Name</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Task Title</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Description</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Attachment / Deliverable</th>
+                              <th className="py-3 px-4 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Completed At</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-outline-variant/20">
+                            {(() => {
+                              const myInternIds = users.filter(u => u.managerId === currentUser.id).map(u => u.id);
+                              const completedInternTasks = tasks.filter(t => myInternIds.includes(t.userId) && t.status === 'Completed');
+
+                              if (completedInternTasks.length === 0) {
+                                return (
+                                  <tr>
+                                    <td colSpan={5} className="py-6 text-center text-on-surface-variant/70 font-medium">
+                                      No completed tasks by your interns yet.
+                                    </td>
+                                  </tr>
+                                );
+                              }
+
+                              return completedInternTasks.map(t => {
+                                const intern = users.find(u => u.id === t.userId);
+                                return (
+                                  <tr key={t.id} className="hover:bg-primary/5 transition-colors">
+                                    <td className="py-3 px-4">
+                                      <p className="font-bold text-primary">{intern ? intern.fullName : 'Unknown Intern'}</p>
+                                      <p className="text-[10px] text-on-surface-variant">@{intern?.username}</p>
+                                    </td>
+                                    <td className="py-3 px-4 font-bold text-on-surface">{t.title}</td>
+                                    <td className="py-3 px-4 font-semibold text-on-surface-variant max-w-xs truncate">{t.description || '-'}</td>
+                                    <td className="py-3 px-4 font-medium">
+                                      {t.attachment ? (
+                                        <a
+                                          href={t.attachment.startsWith('http') ? t.attachment : `https://${t.attachment}`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="inline-flex items-center gap-1 text-primary hover:underline font-bold"
+                                        >
+                                          <FileText className="w-3.5 h-3.5" />
+                                          View Attachment
+                                        </a>
+                                      ) : (
+                                        <span className="text-[10px] text-on-surface-variant/60 italic">No document attached</span>
+                                      )}
+                                    </td>
+                                    <td className="py-3 px-4 font-bold text-emerald-700">
+                                      {t.completedAt ? new Date(t.completedAt).toLocaleDateString() : 'Just now'}
+                                    </td>
+                                  </tr>
+                                );
+                              });
+                            })()}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 7. EMPLOYEE TASKS BOARD */}
+                {(currentTab === 'MyTasks' || currentTab === 'PendingTasks' || currentTab === 'CompletedTasks') && currentUser && (
+                  <div className="space-y-6 animate-fade-in">
+                    <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-6">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div>
+                          <h2 className="font-bold text-lg text-primary">
+                            {currentTab === 'MyTasks' ? 'My Taskboard' : currentTab === 'PendingTasks' ? 'Pending Tasks' : 'Completed Tasks'}
+                          </h2>
+                          <p className="text-xs text-on-surface-variant font-medium">View assignments, update status transitions ({"Pending -> In Progress -> Completed"}), upload document attachments.</p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setNewTaskTitle('');
+                            setNewTaskDesc('');
+                            setNewTaskPriority('Medium');
+                            setNewTaskDeadline(new Date().toISOString().split('T')[0]);
+                            setNewTaskAssigneeId(currentUser.id);
+                            setNewTaskAttachment('');
+                            setIsAddTaskModalOpen(true);
+                          }}
+                          className="inline-flex items-center gap-1.5 bg-primary hover:bg-primary/90 text-on-primary px-4 py-2 rounded-full text-xs font-semibold shadow-sm transition-all cursor-pointer"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Create Task
+                        </button>
+                      </div>
+
+                      {/* Filters */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-surface-container-low/40 rounded-xl border border-outline-variant/30">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant w-4 h-4" />
+                          <input
+                            type="text"
+                            placeholder="Filter task title..."
+                            value={taskSearchTerm}
+                            onChange={(e) => setTaskSearchTerm(e.target.value)}
+                            className="w-full bg-white border border-outline-variant rounded-lg pl-9 pr-3 py-1.5 text-xs text-on-surface focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <select
+                            value={taskPriorityFilter}
+                            onChange={(e) => setTaskPriorityFilter(e.target.value)}
+                            className="w-full bg-white border border-outline-variant rounded-lg px-3 py-1.5 text-xs text-on-surface focus:outline-none"
+                          >
+                            <option value="All">All Priorities</option>
+                            <option value="High">High Priority</option>
+                            <option value="Medium">Medium Priority</option>
+                            <option value="Low">Low Priority</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Task cards Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {myFilteredTasks.length === 0 ? (
+                          <div className="col-span-full py-12 text-center text-xs text-on-surface-variant font-medium">
+                            No tasks found matching criteria.
+                          </div>
+                        ) : (
+                          myFilteredTasks.map((t) => (
+                            <div key={t.id} className="bg-surface-container-lowest rounded-xl p-5 border border-outline-variant shadow-sm flex flex-col justify-between space-y-4 hover:border-primary/30 transition-all">
+                              <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                  <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${
+                                    t.priority === 'High'
+                                      ? 'bg-red-50 text-error border-red-200'
+                                      : t.priority === 'Medium'
+                                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                      : 'bg-blue-50 text-blue-700 border-blue-200'
+                                  }`}>
+                                    {t.priority} Priority
+                                  </span>
+
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${
+                                    t.status === 'Completed'
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                      : t.status === 'In Progress'
+                                      ? 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'
+                                      : 'bg-amber-50 text-amber-700 border-amber-200'
+                                  }`}>
+                                    {t.status}
+                                  </span>
+                                </div>
+
+                                <h3 className="font-bold text-sm text-primary leading-tight">{t.title}</h3>
+                                {t.description && <p className="text-xs text-on-surface-variant/90 leading-relaxed font-medium">{t.description}</p>}
+                              </div>
+
+                              <div className="space-y-3 pt-3 border-t border-outline-variant/20">
+                                <div className="flex justify-between items-center text-[10px] text-on-surface-variant font-semibold">
+                                  <div className="flex items-center gap-1">
+                                    <Calendar className="w-3 h-3 text-on-surface-variant" />
+                                    <span>Deadline: {t.deadline}</span>
+                                  </div>
+                                </div>
+
+                                {t.attachment && (
+                                  <a
+                                    href={t.attachment}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 text-[10px] font-bold text-primary hover:underline"
+                                  >
+                                    <Paperclip className="w-3.5 h-3.5" />
+                                    Download document attachment
+                                  </a>
+                                )}
+
+                                {/* Status Transitions */}
+                                <div className="flex items-center gap-1.5 pt-1">
+                                  {t.status === 'Pending' && (
+                                    <button
+                                      onClick={() => handleUpdateTaskStatus(t, 'In Progress')}
+                                      className="flex-1 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded border border-indigo-200/50 cursor-pointer"
+                                    >
+                                      Start Working
+                                    </button>
+                                  )}
+                                  {t.status === 'In Progress' && (
+                                    <>
+                                      <button
+                                        onClick={() => handleUpdateTaskStatus(t, 'Completed')}
+                                        className="flex-1 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded border border-emerald-200/50 cursor-pointer"
+                                      >
+                                        Mark Completed
+                                      </button>
+                                      <button
+                                        onClick={() => handleUpdateTaskStatus(t, 'Pending')}
+                                        className="py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-on-surface-variant text-[10px] font-bold rounded border border-outline-variant/30 cursor-pointer"
+                                      >
+                                        Revert
+                                      </button>
+                                    </>
+                                  )}
+                                  {t.status === 'Completed' && (
+                                    <button
+                                      onClick={() => handleUpdateTaskStatus(t, 'Pending')}
+                                      className="flex-1 py-1.5 bg-slate-100 hover:bg-slate-200 text-on-surface-variant text-[10px] font-bold rounded border border-outline-variant/30 cursor-pointer"
+                                    >
+                                      Reopen Task
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => deleteTask(t.id)}
+                                    className="p-1.5 hover:bg-red-50 hover:text-error text-on-surface-variant rounded border border-outline-variant/30 cursor-pointer"
+                                    title="Delete task assignment"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 8. EMPLOYEE LEAVE APPLICATIONS */}
+                {currentTab === 'LeaveRequests' && currentUser && (
+                  <div className="space-y-6 animate-fade-in">
+                    {/* Apply Leave request Form */}
+                    <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-6">
+                      <div>
+                        <h2 className="font-bold text-lg text-primary">Apply for Leave</h2>
+                        <p className="text-xs text-on-surface-variant font-medium">Select your dates, type, reason and optionally add attachment documentation.</p>
+                      </div>
+
+                      <form onSubmit={handleLeaveRequestSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Leave Type</label>
+                          <select
+                            value={leaveType}
+                            onChange={(e) => setLeaveType(e.target.value as any)}
+                            className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                          >
+                            <option value="Casual">Casual Leave</option>
+                            <option value="Sick">Sick Leave</option>
+                            <option value="Emergency">Emergency Leave</option>
+                            <option value="Work From Home">Work From Home (WFH)</option>
+                          </select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Attachment URL (Optional)</label>
+                          <input
+                            type="text"
+                            value={leaveAttachment}
+                            onChange={(e) => setLeaveAttachment(e.target.value)}
+                            placeholder="Link to document..."
+                            className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">From Date</label>
+                          <input
+                            type="date"
+                            value={leaveFromDate}
+                            onChange={(e) => setLeaveFromDate(e.target.value)}
+                            className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">To Date</label>
+                          <input
+                            type="date"
+                            value={leaveToDate}
+                            onChange={(e) => setLeaveToDate(e.target.value)}
+                            className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="space-y-1 sm:col-span-2">
+                          <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Brief Reason</label>
+                          <input
+                            type="text"
+                            value={leaveReason}
+                            onChange={(e) => setLeaveReason(e.target.value)}
+                            placeholder="e.g. Medical checkup, personal work"
+                            className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="space-y-1 sm:col-span-2">
+                          <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Detailed Description</label>
+                          <textarea
+                            value={leaveDesc}
+                            onChange={(e) => setLeaveDesc(e.target.value)}
+                            placeholder="Provide additional details..."
+                            rows={3}
+                            className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-2 flex justify-end pt-2">
+                          <button
+                            type="submit"
+                            className="bg-primary hover:bg-primary/90 text-on-primary px-6 py-2.5 rounded-full text-xs font-bold shadow-sm transition-all cursor-pointer"
+                          >
+                            Submit Leave Application
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+
+                    {/* History Timeline table */}
+                    <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-4">
+                      <h3 className="font-bold text-sm text-primary uppercase tracking-wider">Leave Applications History</h3>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm border-collapse">
+                          <thead>
+                            <tr className="border-b border-outline-variant/40 bg-surface-container-low/20">
+                              <th className="py-2.5 px-3 font-bold text-xs text-on-surface-variant">Leave Type</th>
+                              <th className="py-2.5 px-3 font-bold text-xs text-on-surface-variant">Dates Range</th>
+                              <th className="py-2.5 px-3 font-bold text-xs text-on-surface-variant">Total Days</th>
+                              <th className="py-2.5 px-3 font-bold text-xs text-on-surface-variant">Reason</th>
+                              <th className="py-2.5 px-3 font-bold text-xs text-on-surface-variant">Status</th>
+                              <th className="py-2.5 px-3 font-bold text-xs text-on-surface-variant">Feedback</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {leaveRequests.filter(l => l.userId === currentUser.id).length === 0 ? (
+                              <tr>
+                                <td colSpan={6} className="py-6 text-center text-xs text-on-surface-variant font-medium">
+                                  No leave applications recorded.
+                                </td>
+                              </tr>
+                            ) : (
+                              leaveRequests.filter(l => l.userId === currentUser.id).map(l => (
+                                <tr key={l.id} className="hover:bg-primary/5 text-xs">
+                                  <td className="py-3 px-3 font-bold text-primary">{l.leaveType}</td>
+                                  <td className="py-3 px-3 text-on-surface-variant">{l.fromDate} to {l.toDate}</td>
+                                  <td className="py-3 px-3 font-semibold text-primary">{l.totalDays} days</td>
+                                  <td className="py-3 px-3 text-on-surface-variant font-medium">"{l.reason}"</td>
+                                  <td className="py-3 px-3">
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${
+                                      l.status === 'Approved'
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                        : l.status === 'Rejected'
+                                        ? 'bg-red-50 text-red-700 border-red-200'
+                                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                                    }`}>
+                                      {l.status}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-3 font-semibold text-on-surface-variant/80 italic">
+                                    {l.adminComment ? `"${l.adminComment}"` : '--'}
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 9. EMPLOYEE APPROVED LEAVES VIEW */}
+                {currentTab === 'ApprovedLeaves' && currentUser && (
+                  <div className="space-y-6 animate-fade-in">
+                    <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-6">
+                      <div>
+                        <h2 className="font-bold text-lg text-primary">Approved Leave Days</h2>
+                        <p className="text-xs text-on-surface-variant font-medium">View all your leave requests that have been approved by administration.</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {leaveRequests.filter(l => l.userId === currentUser.id && l.status === 'Approved').length === 0 ? (
+                          <div className="col-span-full py-8 text-center text-xs text-on-surface-variant font-medium">
+                            No approved leaves found.
+                          </div>
+                        ) : (
+                          leaveRequests.filter(l => l.userId === currentUser.id && l.status === 'Approved').map(l => (
+                            <div key={l.id} className="bg-surface-container-lowest border border-outline-variant/60 rounded-xl p-4 flex gap-3.5 items-start">
+                              <CalendarClock className="w-8 h-8 text-emerald-600 shrink-0" />
+                              <div className="space-y-1">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">{l.leaveType}</span>
+                                <h4 className="font-bold text-sm text-primary pt-1">{l.fromDate} to {l.toDate}</h4>
+                                <p className="text-xs text-on-surface-variant font-semibold">Total Days: <strong className="text-primary">{l.totalDays}</strong></p>
+                                <p className="text-xs text-on-surface-variant font-medium italic mt-1">"{l.reason}"</p>
+                                {l.adminComment && (
+                                  <p className="text-[11px] text-on-surface-variant/70 pt-1 border-t border-outline-variant/20 mt-2">
+                                    <strong>Admin Feedback:</strong> "{l.adminComment}"
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 10. EMPLOYEE PROFILE */}
+                {currentTab === 'EmpProfile' && selectedEmployeeForProfile && (
+                  <div className="space-y-6 animate-fade-in">
+                    {/* Reuse Admin analytics component scoped to current user */}
+                    <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-6">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-outline-variant/20 pb-4">
+                        <div className="flex items-center gap-4">
+                          <img src={selectedEmployeeForProfile.avatarUrl} alt={selectedEmployeeForProfile.name} className="w-16 h-16 rounded-full object-cover border border-outline-variant" />
+                          <div>
+                            <h2 className="font-bold text-xl text-primary">{selectedEmployeeForProfile.name}</h2>
+                            <p className="text-xs text-on-surface-variant font-semibold uppercase tracking-wider">{selectedEmployeeForProfile.role} • Corporate ID: {selectedEmployeeForProfile.empId}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setIsProfileExportModalOpen(true)}
+                          className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-on-primary px-4 py-2 rounded-full text-xs font-semibold shadow-sm transition-all cursor-pointer"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Export My Records
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-2">
+                        <div className="bg-surface-container-low/30 p-4 rounded-xl border border-outline-variant/40">
+                          <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Attendance Rate</p>
+                          <p className="text-2xl font-extrabold text-primary mt-1">{profileStats.rate}</p>
+                          <p className="text-[10px] text-on-surface-variant/80 font-medium">Calculated from {profileStats.total} logs</p>
+                        </div>
+
+                        <div className="bg-surface-container-low/30 p-4 rounded-xl border border-outline-variant/40">
+                          <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Present Count</p>
+                          <p className="text-2xl font-extrabold text-emerald-600 mt-1">{profileStats.present + profileStats.late}</p>
+                          <p className="text-[10px] text-on-surface-variant/80 font-medium">On-time days</p>
+                        </div>
+
+                        <div className="bg-surface-container-low/30 p-4 rounded-xl border border-outline-variant/40">
+                          <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Late Arrivals</p>
+                          <p className="text-2xl font-extrabold text-amber-500 mt-1">{profileStats.late}</p>
+                          <p className="text-[10px] text-on-surface-variant/80 font-medium">Check-ins after 12:00 PM</p>
+                        </div>
+
+                        <div className="bg-surface-container-low/30 p-4 rounded-xl border border-outline-variant/40">
+                          <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Absent Days</p>
+                          <p className="text-2xl font-extrabold text-error mt-1">{profileStats.absent}</p>
+                          <p className="text-[10px] text-on-surface-variant/80 font-medium">Unexcused inactive days</p>
+                        </div>
+                      </div>
+
+                      {/* Chart visualization */}
+                      <div className="space-y-4 pt-4 border-t border-outline-variant/20">
+                        <div className="flex justify-between items-center">
+                          <h3 className="font-bold text-sm text-primary uppercase tracking-wider">My Attendance & hours trend</h3>
+                          <div className="flex items-center gap-1.5 p-1 bg-surface-container-low rounded-lg">
+                            <button
+                              onClick={() => setTrendFilter('weekly')}
+                              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${trendFilter === 'weekly' ? 'bg-white text-primary shadow-xs' : 'text-on-surface-variant'}`}
+                            >
+                              Weekly
+                            </button>
+                            <button
+                              onClick={() => setTrendFilter('monthly')}
+                              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${trendFilter === 'monthly' ? 'bg-white text-primary shadow-xs' : 'text-on-surface-variant'}`}
+                            >
+                              Monthly
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="h-48 flex items-end justify-between gap-3 pt-6 border-b border-outline-variant/40">
+                          {chartData.map((item, index) => {
+                            const heightPct = item.total > 0 ? (item.presentPercent + item.latePercent) : 0;
+                            const hoursPct = (item.avgWorkingHours / maxHoursScale) * 100;
+
+                            return (
+                              <div key={index} className="flex-1 flex flex-col items-center gap-2 group h-full justify-end">
+                                <div className="w-full flex justify-center gap-1 h-full items-end relative">
+                                  <div
+                                    style={{ height: `${heightPct}%` }}
+                                    className="w-4 sm:w-6 bg-primary/20 group-hover:bg-primary/45 rounded-t transition-all"
+                                  ></div>
+                                  <div
+                                    style={{ height: `${hoursPct}%` }}
+                                    className="w-2 sm:w-3 bg-emerald-500 rounded-t transition-all"
+                                    title={`Hours: ${item.avgWorkingHours.toFixed(1)}h`}
+                                  ></div>
+                                </div>
+                                <span className="text-[10px] text-on-surface-variant font-bold truncate max-w-[40px]">{item.label}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 11. EMPLOYEE SETTINGS */}
+                {currentTab === 'EmpSettings' && (
+                  <div className="space-y-6 animate-fade-in">
+                    <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm max-w-md mx-auto space-y-6">
+                      <div>
+                        <h2 className="font-bold text-lg text-primary">Security Settings</h2>
+                        <p className="text-xs text-on-surface-variant font-medium">Change your current login account password details.</p>
+                      </div>
+
+                      <form onSubmit={handleChangePasswordSubmit} className="space-y-4">
+                        <div className="space-y-1">
+                          <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Old Password</label>
+                          <input
+                            type="password"
+                            value={settingsOldPass}
+                            onChange={(e) => setSettingsOldPass(e.target.value)}
+                            placeholder="Enter current password"
+                            className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">New Password</label>
+                          <input
+                            type="password"
+                            value={settingsNewPass}
+                            onChange={(e) => setSettingsNewPass(e.target.value)}
+                            placeholder="Enter new password"
+                            className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Confirm New Password</label>
+                          <input
+                            type="password"
+                            value={settingsConfirmPass}
+                            onChange={(e) => setSettingsConfirmPass(e.target.value)}
+                            placeholder="Confirm new password"
+                            className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                          />
+                        </div>
+
+                        <button
+                          type="submit"
+                          className="w-full bg-primary hover:bg-primary/90 text-on-primary py-2.5 rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer"
+                        >
+                          Update Account Password
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </main>
         </div>
       )}
 
-      {/* CREATE NEW EMPLOYEE MODAL DIALOG */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsCreateModalOpen(false)}></div>
-          
-          <div className="relative bg-white rounded-xl w-full max-w-lg overflow-hidden custom-shadow border border-outline-variant/50 animate-bounce-short">
-            <div className="bg-primary p-4 text-on-primary flex justify-between items-center">
-              <h3 className="font-bold text-lg flex items-center gap-2">
-                {editingEmployee ? <Edit2 className="w-5 h-5 text-emerald-400" /> : <UserPlus className="w-5 h-5 text-emerald-400" />}
-                {editingEmployee ? 'Edit Corporate User' : 'Add New Corporate User'}
-              </h3>
-              <button onClick={() => setIsCreateModalOpen(false)} className="rounded-full hover:bg-white/20 p-1 text-white">
+      {/* ============================================================== */}
+      {/* MODALS RENDER SECTION */}
+      {/* ============================================================== */}
+
+      {/* 1. EXPORT OVERALL REPORTS DIALOG MODAL */}
+      {isExportModalOpen && (
+        <div className="fixed inset-0 z-[99] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl p-6 border border-outline-variant max-w-md w-full shadow-2xl space-y-4 animate-scale-up">
+            <div className="flex justify-between items-center border-b border-outline-variant/20 pb-3">
+              <h3 className="font-bold text-primary">Export Overall Attendance</h3>
+              <button onClick={() => setIsExportModalOpen(false)} className="p-1 hover:bg-surface-container rounded-full cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmitEmployee} className="p-6 space-y-4 max-h-[calc(100vh-160px)] overflow-y-auto">
-              <div>
-                <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
-                  Full Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Adrian Sterling"
-                  value={newEmpName}
-                  onChange={(e) => setNewEmpName(e.target.value)}
-                  className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                />
+            <div className="space-y-4 text-xs font-medium">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Start Date</label>
+                  <input
+                    type="date"
+                    value={exportStartDate}
+                    onChange={(e) => setExportStartDate(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">End Date</label>
+                  <input
+                    type="date"
+                    value={exportEndDate}
+                    onChange={(e) => setExportEndDate(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                  />
+                </div>
               </div>
 
+              <div className="flex flex-col gap-2 pt-2">
+                <button
+                  onClick={() => handleExportCSV(exportStartDate, exportEndDate)}
+                  className="w-full bg-primary hover:bg-primary/90 text-on-primary py-2.5 rounded-lg font-bold shadow-sm transition-all cursor-pointer"
+                >
+                  Download Daywise CSV Report
+                </button>
+                <button
+                  onClick={() => handleExportOverallPDF(exportStartDate, exportEndDate)}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg font-bold shadow-sm transition-all cursor-pointer"
+                >
+                  Export & Print PDF Document
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. EXPORT SELECTED PROFILE REPORT DIALOG MODAL */}
+      {isProfileExportModalOpen && selectedEmployeeForProfile && (
+        <div className="fixed inset-0 z-[99] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl p-6 border border-outline-variant max-w-md w-full shadow-2xl space-y-4 animate-scale-up">
+            <div className="flex justify-between items-center border-b border-outline-variant/20 pb-3">
+              <h3 className="font-bold text-primary">Export Profile: {selectedEmployeeForProfile.name}</h3>
+              <button onClick={() => setIsProfileExportModalOpen(false)} className="p-1 hover:bg-surface-container rounded-full cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs font-medium">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Start Date</label>
+                  <input
+                    type="date"
+                    value={exportStartDate}
+                    onChange={(e) => setExportStartDate(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">End Date</label>
+                  <input
+                    type="date"
+                    value={exportEndDate}
+                    onChange={(e) => setExportEndDate(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 pt-2">
+                <button
+                  onClick={() => handleExportProfileCSV(selectedEmployeeForProfile, exportStartDate, exportEndDate)}
+                  className="w-full bg-primary hover:bg-primary/90 text-on-primary py-2.5 rounded-lg font-bold shadow-sm transition-all cursor-pointer"
+                >
+                  Download Profile CSV Log
+                </button>
+                <button
+                  onClick={() => handleExportProfilePDF(selectedEmployeeForProfile, exportStartDate, exportEndDate)}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg font-bold shadow-sm transition-all cursor-pointer"
+                >
+                  Export & Print PDF Profile Report
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. ADD / EDIT USER DIALOG MODAL (Admin Action) */}
+      {isUserModalOpen && (
+        <div className="fixed inset-0 z-[99] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl p-6 border border-outline-variant max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl space-y-4 animate-scale-up">
+            <div className="flex justify-between items-center border-b border-outline-variant/20 pb-3">
+              <h3 className="font-bold text-primary">{editingUser ? 'Modify User Profile' : 'Register New User & Employee'}</h3>
+              <button onClick={() => setIsUserModalOpen(false)} className="p-1 hover:bg-surface-container rounded-full cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUserCRUDSubmit} className="space-y-4 text-xs font-medium">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
-                    Employee ID *
-                  </label>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Full Name</label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. EMP-2024-001"
-                    value={newEmpId}
-                    onChange={(e) => setNewEmpId(e.target.value)}
-                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    placeholder="John Doe"
+                    value={userFormFullName}
+                    onChange={(e) => setUserFormFullName(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
-                    Email Address *
-                  </label>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Username</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="john_doe"
+                    value={userFormUsername}
+                    onChange={(e) => setUserFormUsername(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Email Address</label>
                   <input
                     type="email"
                     required
-                    placeholder="e.g. adrian@zhajirii.com"
-                    value={newEmpEmail}
-                    onChange={(e) => setNewEmpEmail(e.target.value)}
-                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    placeholder="john@company.com"
+                    value={userFormEmail}
+                    onChange={(e) => setUserFormEmail(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Phone Number</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 555-0199"
+                    value={userFormPhone}
+                    onChange={(e) => setUserFormPhone(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Designation / Role</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Software Engineer"
+                    value={userFormDesignation}
+                    onChange={(e) => setUserFormDesignation(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Department</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Engineering"
+                    value={userFormDepartment}
+                    onChange={(e) => setUserFormDepartment(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Corporate ID (EMP Code)</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="EMP-101"
+                    value={userFormEmployeeId}
+                    onChange={(e) => setUserFormEmployeeId(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Joining Date</label>
+                  <input
+                    type="date"
+                    value={userFormJoiningDate}
+                    onChange={(e) => setUserFormJoiningDate(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">System Role (RBAC)</label>
+                  <select
+                    value={userFormRole}
+                    onChange={(e) => setUserFormRole(e.target.value as any)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                  >
+                    <option value="Employee">Employee (Standard Access)</option>
+                    <option value="Team Leader">Team Leader</option>
+                    <option value="Admin">Admin (Full Access Control)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Account Status</label>
+                  <select
+                    value={userFormStatus}
+                    onChange={(e) => setUserFormStatus(e.target.value as any)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                  >
+                    <option value="Active">Active / Enabled</option>
+                    <option value="Disabled">Disabled / Inactive</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Intern Type</label>
+                  <select
+                    value={userFormInternType}
+                    onChange={(e) => setUserFormInternType(e.target.value as any)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                  >
+                    <option value="Online Intern">Online Intern</option>
+                    <option value="Offline Intern">Offline Intern</option>
+                  </select>
+                </div>
+
+                {userFormRole === 'Employee' && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Assign Team Leader</label>
+                    <select
+                      value={userFormManagerId}
+                      onChange={(e) => setUserFormManagerId(e.target.value)}
+                      className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                    >
+                      <option value="">No Team Leader (Unassigned)</option>
+                      {users
+                        .filter(u => u.role === 'Team Leader' && u.status === 'Active' && u.id !== editingUser?.id)
+                        .map(u => (
+                          <option key={u.id} value={u.id}>{u.fullName} (@{u.username})</option>
+                        ))
+                      }
+                    </select>
+                  </div>
+                )}
+
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">
+                    {editingUser ? 'Password Overrides (Leave blank to keep existing)' : 'Account Password'}
+                  </label>
+                  <input
+                    type="password"
+                    placeholder={editingUser ? '••••••••' : 'Enter login password (min 6 chars)'}
+                    value={userFormPassword}
+                    onChange={(e) => setUserFormPassword(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">
-                  Select Job Roles *
-                </label>
-                <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-3 bg-surface-container-low border border-outline-variant rounded-lg">
-                  {AVAILABLE_ROLES.map((role) => {
-                    const isSelected = selectedRoles.includes(role);
-                    return (
-                      <button
-                        key={role}
-                        type="button"
-                        onClick={() => {
-                          if (isSelected) {
-                            if (selectedRoles.length > 1) {
-                              setSelectedRoles(selectedRoles.filter(r => r !== role));
-                            } else {
-                              showToast('At least one role must be selected.');
-                            }
-                          } else {
-                            setSelectedRoles([...selectedRoles, role]);
-                          }
-                        }}
-                        className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all border cursor-pointer select-none ${
-                          isSelected
-                            ? 'bg-primary text-on-primary border-primary'
-                            : 'bg-white text-on-surface-variant border-outline-variant hover:bg-surface-container'
-                        }`}
-                      >
-                        {role}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">
-                  Avatar Photo
-                </label>
-                <div className="flex flex-col sm:flex-row items-center gap-4 bg-surface-container-low border border-outline-variant rounded-lg p-4">
-                  {newEmpAvatar ? (
-                    <div className="relative group w-16 h-16 rounded-full overflow-hidden border border-outline-variant shrink-0">
-                      <img src={newEmpAvatar} alt="Preview" className="w-full h-full object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => setNewEmpAvatar('')}
-                        className="absolute inset-0 bg-black/40 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[10px] font-bold"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="w-16 h-16 rounded-full bg-surface-container-high border border-dashed border-outline flex items-center justify-center shrink-0">
-                      <span className="text-on-surface-variant text-xl">👤</span>
-                    </div>
-                  )}
-                  <div className="flex-1 w-full space-y-2">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            setNewEmpAvatar(reader.result as string);
-                          };
-                          reader.readAsDataURL(file);
-                        }
-                      }}
-                      className="block w-full text-xs text-on-surface-variant
-                        file:mr-4 file:py-1.5 file:px-4
-                        file:rounded-lg file:border-0
-                        file:text-xs file:font-semibold
-                        file:bg-primary file:text-on-primary
-                        hover:file:brightness-110
-                        cursor-pointer"
-                    />
-                    <div className="text-center text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">or</div>
-                    <input
-                      type="url"
-                      placeholder="Enter image URL instead"
-                      value={newEmpAvatar.startsWith('data:') ? '' : newEmpAvatar}
-                      onChange={(e) => setNewEmpAvatar(e.target.value)}
-                      className="w-full bg-background border border-outline-variant rounded-lg p-2.5 text-xs outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-4 border-t flex justify-end gap-2">
+              <div className="flex justify-end gap-2 pt-3 border-t border-outline-variant/20">
                 <button
                   type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
-                  className="px-4 py-2 border border-outline-variant rounded-lg text-sm font-semibold hover:bg-surface-container-low"
+                  onClick={() => setIsUserModalOpen(false)}
+                  className="px-4 py-2 hover:bg-slate-100 rounded-lg text-on-surface-variant font-bold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-primary text-on-primary rounded-lg text-sm font-semibold hover:brightness-110 shadow-md"
+                  className="bg-primary hover:bg-primary/90 text-on-primary px-6 py-2 rounded-lg font-bold shadow-sm cursor-pointer"
                 >
-                  {editingEmployee ? 'Save Changes' : 'Create User'}
+                  {editingUser ? 'Apply Changes' : 'Register User'}
                 </button>
               </div>
             </form>
@@ -3834,84 +6553,123 @@ export default function App() {
         </div>
       )}
 
-      {/* EXPORT RANGE MODAL DIALOG */}
-      {isExportModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsExportModalOpen(false)}></div>
-          
-          <div className="relative bg-white rounded-xl w-full max-w-md overflow-hidden custom-shadow border border-outline-variant/50 animate-bounce-short text-on-surface">
-            <div className="bg-primary p-4 text-on-primary flex justify-between items-center">
-              <h3 className="font-bold text-lg flex items-center gap-2">
-                <Download className="w-5 h-5 text-emerald-400" />
-                <span>Export Attendance Report</span>
-              </h3>
-              <button onClick={() => setIsExportModalOpen(false)} className="rounded-full hover:bg-white/20 p-1 text-white">
+      {/* 4. ADD TASK DIALOG MODAL (Employee / Manager assignment) */}
+      {isAddTaskModalOpen && currentUser && (
+        <div className="fixed inset-0 z-[99] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl p-6 border border-outline-variant max-w-md w-full shadow-2xl space-y-4 animate-scale-up">
+            <div className="flex justify-between items-center border-b border-outline-variant/20 pb-3">
+              <h3 className="font-bold text-primary">Assign New Task</h3>
+              <button onClick={() => setIsAddTaskModalOpen(false)} className="p-1 hover:bg-surface-container rounded-full cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form 
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleExportCSV(exportStartDate, exportEndDate);
-              }} 
-              className="p-6 space-y-4"
-            >
-              <p className="text-xs font-semibold text-on-surface-variant">
-                Select the date range to export the daywise attendance report with times for all users.
-              </p>
+            <form onSubmit={handleTaskSubmit} className="space-y-4 text-xs font-medium">
+              <div className="space-y-1">
+                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Task Title</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Audit documentation review"
+                  value={newTaskTitle}
+                  onChange={(e) => setNewTaskTitle(e.target.value)}
+                  className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                />
+              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
-                    Start Date
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={exportStartDate}
-                    onChange={(e) => setExportStartDate(e.target.value)}
-                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                  />
+              <div className="space-y-1">
+                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Detailed Description</label>
+                <textarea
+                  placeholder="Task details and instructions..."
+                  value={newTaskDesc}
+                  onChange={(e) => setNewTaskDesc(e.target.value)}
+                  rows={3}
+                  className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Priority</label>
+                  <select
+                    value={newTaskPriority}
+                    onChange={(e) => setNewTaskPriority(e.target.value as any)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                  >
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                  </select>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
-                    End Date
-                  </label>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Deadline</label>
                   <input
                     type="date"
-                    required
-                    value={exportEndDate}
-                    onChange={(e) => setExportEndDate(e.target.value)}
-                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    value={newTaskDeadline}
+                    onChange={(e) => setNewTaskDeadline(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
                   />
                 </div>
               </div>
 
-              <div className="pt-4 border-t flex justify-end gap-2 flex-wrap">
+              {/* Assignee choice (Admins and Team Leaders can assign) */}
+              <div className="space-y-1">
+                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Assignee</label>
+                {currentUser.role === 'Admin' || currentUser.role === 'Team Leader' ? (
+                  <select
+                    value={newTaskAssigneeId}
+                    onChange={(e) => setNewTaskAssigneeId(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                  >
+                    <option value="">Select corporate assignee...</option>
+                    {currentUser.role === 'Team Leader' ? (
+                      <>
+                        <option value={currentUser.id}>{currentUser.fullName} (Self Assignment)</option>
+                        {users.filter(u => u.managerId === currentUser.id).map(u => (
+                          <option key={u.id} value={u.id}>{u.fullName} (@{u.username})</option>
+                        ))}
+                      </>
+                    ) : (
+                      users.map(u => (
+                        <option key={u.id} value={u.id}>{u.fullName} (@{u.username})</option>
+                      ))
+                    )}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    disabled
+                    value={`${currentUser.fullName} (Self Assignment)`}
+                    className="w-full bg-slate-100 border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface-variant/80 focus:outline-none"
+                  />
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Document Attachment URL (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="Link to file..."
+                  value={newTaskAttachment}
+                  onChange={(e) => setNewTaskAttachment(e.target.value)}
+                  className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-outline-variant/20">
                 <button
                   type="button"
-                  onClick={() => setIsExportModalOpen(false)}
-                  className="px-4 py-2 border border-outline-variant rounded-lg text-sm font-semibold hover:bg-surface-container-low cursor-pointer"
+                  onClick={() => setIsAddTaskModalOpen(false)}
+                  className="px-4 py-2 hover:bg-slate-100 rounded-lg text-on-surface-variant font-bold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
-                  type="button"
-                  onClick={() => handleExportCSV(exportStartDate, exportEndDate)}
-                  className="px-4 py-2 border border-primary text-primary rounded-lg text-sm font-semibold hover:bg-primary/5 transition-colors flex items-center gap-1.5 cursor-pointer"
+                  type="submit"
+                  className="bg-primary hover:bg-primary/90 text-on-primary px-6 py-2 rounded-lg font-bold shadow-sm cursor-pointer"
                 >
-                  <Download className="w-4 h-4" />
-                  <span>Download CSV</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleExportOverallPDF(exportStartDate, exportEndDate)}
-                  className="px-5 py-2 bg-primary text-on-primary rounded-lg text-sm font-semibold hover:brightness-110 shadow-md flex items-center gap-1.5 cursor-pointer"
-                >
-                  <FileText className="w-4 h-4 text-emerald-400" />
-                  <span>Download PDF</span>
+                  Assign Task
                 </button>
               </div>
             </form>
@@ -3919,89 +6677,50 @@ export default function App() {
         </div>
       )}
 
-      {/* EXPORT PROFILE RANGE MODAL DIALOG */}
-      {isProfileExportModalOpen && selectedEmployeeForProfile && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsProfileExportModalOpen(false)}></div>
-          
-          <div className="relative bg-white rounded-xl w-full max-w-md overflow-hidden custom-shadow border border-outline-variant/50 animate-bounce-short text-on-surface">
-            <div className="bg-primary p-4 text-on-primary flex justify-between items-center">
-              <h3 className="font-bold text-lg flex items-center gap-2">
-                <Download className="w-5 h-5 text-emerald-400" />
-                <span>Export Profile Report</span>
-              </h3>
-              <button onClick={() => setIsProfileExportModalOpen(false)} className="rounded-full hover:bg-white/20 p-1 text-white">
+      {/* 5. ADMIN LEAVE COMMENT & DECISION MODAL */}
+      {isAdminLeaveCommentModalOpen && selectedLeaveForAdminAction && (
+        <div className="fixed inset-0 z-[99] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl p-6 border border-outline-variant max-w-md w-full shadow-2xl space-y-4 animate-scale-up">
+            <div className="flex justify-between items-center border-b border-outline-variant/20 pb-3">
+              <h3 className="font-bold text-primary">Process Leave Request</h3>
+              <button onClick={() => setIsAdminLeaveCommentModalOpen(false)} className="p-1 hover:bg-surface-container rounded-full cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form 
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleExportProfileCSV(selectedEmployeeForProfile, exportStartDate, exportEndDate);
-              }} 
-              className="p-6 space-y-4"
-            >
-              <div className="bg-surface-container-low p-3 rounded-lg border border-outline-variant/30 text-xs">
-                <p className="font-bold text-primary mb-1">Employee: {selectedEmployeeForProfile.name}</p>
-                <p className="text-on-surface-variant">ID: {selectedEmployeeForProfile.empId} | Role: {selectedEmployeeForProfile.role}</p>
-              </div>
-
-              <p className="text-xs font-semibold text-on-surface-variant">
-                Select the date range to export the daywise attendance report with times for this user.
+            <form onSubmit={handleAdminLeaveDecisionSubmit} className="space-y-4 text-xs font-medium">
+              <p className="text-on-surface-variant text-[11px] font-semibold">
+                Applying decision: <strong className={adminLeaveActionType === 'Approved' ? 'text-emerald-700' : 'text-error'}>{adminLeaveActionType}</strong> for applicant: {users.find(u => u.id === selectedLeaveForAdminAction.userId)?.fullName} ({selectedLeaveForAdminAction.totalDays} days).
               </p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
-                    Start Date
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={exportStartDate}
-                    onChange={(e) => setExportStartDate(e.target.value)}
-                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
-                    End Date
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={exportEndDate}
-                    onChange={(e) => setExportEndDate(e.target.value)}
-                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                  />
-                </div>
+              <div className="space-y-1">
+                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Admin Remarks / Comments</label>
+                <textarea
+                  placeholder="Provide approval / rejection comments here..."
+                  value={adminLeaveComment}
+                  onChange={(e) => setAdminLeaveComment(e.target.value)}
+                  rows={3}
+                  className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"
+                />
               </div>
 
-              <div className="pt-4 border-t flex justify-end gap-2 flex-wrap">
+              <div className="flex justify-end gap-2 pt-3 border-t border-outline-variant/20">
                 <button
                   type="button"
-                  onClick={() => setIsProfileExportModalOpen(false)}
-                  className="px-4 py-2 border border-outline-variant rounded-lg text-sm font-semibold hover:bg-surface-container-low cursor-pointer"
+                  onClick={() => setIsAdminLeaveCommentModalOpen(false)}
+                  className="px-4 py-2 hover:bg-slate-100 rounded-lg text-on-surface-variant font-bold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
-                  type="button"
-                  onClick={() => handleExportProfileCSV(selectedEmployeeForProfile, exportStartDate, exportEndDate)}
-                  className="px-4 py-2 border border-primary text-primary rounded-lg text-sm font-semibold hover:bg-primary/5 transition-colors flex items-center gap-1.5 cursor-pointer"
+                  type="submit"
+                  className={`px-6 py-2 rounded-lg font-bold shadow-sm cursor-pointer ${
+                    adminLeaveActionType === 'Approved'
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      : 'bg-error hover:bg-error/90 text-on-primary'
+                  }`}
                 >
-                  <Download className="w-4 h-4" />
-                  <span>Download CSV</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleExportProfilePDF(selectedEmployeeForProfile, exportStartDate, exportEndDate)}
-                  className="px-5 py-2 bg-primary text-on-primary rounded-lg text-sm font-semibold hover:brightness-110 shadow-md flex items-center gap-1.5 cursor-pointer"
-                >
-                  <FileText className="w-4 h-4 text-emerald-400" />
-                  <span>Download PDF</span>
+                  Apply Decision
                 </button>
               </div>
             </form>

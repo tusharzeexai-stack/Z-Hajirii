@@ -58,6 +58,40 @@ import { supabase } from './supabaseClient';
 // @ts-ignore
 import logoUrl from '@/assets/Zeex-AI logo .png';
 
+// Helper to get local date and time string formatted for datetime-local input
+const getDefaultDeadlineString = () => {
+  const tzoffset = (new Date()).getTimezoneOffset() * 60000;
+  return (new Date(Date.now() - tzoffset)).toISOString().slice(0, 16);
+};
+
+// Helper to format deadline nicely
+const formatDeadline = (deadlineStr: string) => {
+  if (!deadlineStr) return '';
+  try {
+    const date = new Date(deadlineStr);
+    if (isNaN(date.getTime())) return deadlineStr;
+    const hasTime = deadlineStr.includes('T') || (deadlineStr.includes(' ') && deadlineStr.split(' ')[1]?.match(/\d/));
+    if (hasTime) {
+      return date.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } else {
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    }
+  } catch (e) {
+    return deadlineStr;
+  }
+};
+
 // Helper to calculate total hours dynamically based on in and out times
 const calculateDuration = (inTime: string, outTime: string) => {
   if (inTime === '--:--' || outTime === '--:--') return '0h 00m';
@@ -277,7 +311,7 @@ export default function App() {
   const [newTaskTitle, setNewTaskTitle] = useState<string>('');
   const [newTaskDesc, setNewTaskDesc] = useState<string>('');
   const [newTaskPriority, setNewTaskPriority] = useState<'Low' | 'Medium' | 'High'>('Medium');
-  const [newTaskDeadline, setNewTaskDeadline] = useState<string>('');
+  const [newTaskDeadline, setNewTaskDeadline] = useState<string>(getDefaultDeadlineString());
   const [newTaskAssigneeId, setNewTaskAssigneeId] = useState<string>('');
   const [newTaskAttachment, setNewTaskAttachment] = useState<string>('');
 
@@ -1843,7 +1877,7 @@ export default function App() {
       title: newTaskTitle.trim(),
       description: newTaskDesc.trim(),
       priority: newTaskPriority,
-      deadline: newTaskDeadline || todayDateString,
+      deadline: newTaskDeadline || getDefaultDeadlineString(),
       status: 'Pending',
       attachment: newTaskAttachment.trim(),
       createdAt: new Date().toISOString()
@@ -3643,7 +3677,7 @@ export default function App() {
                             setNewTaskTitle('');
                             setNewTaskDesc('');
                             setNewTaskPriority('Medium');
-                            setNewTaskDeadline(new Date().toISOString().split('T')[0]);
+                            setNewTaskDeadline(getDefaultDeadlineString());
                             setNewTaskAttachment('');
                             const tl = users.find(u => u.role === 'Team Leader' && u.status === 'Active');
                             setNewTaskAssigneeId(tl ? tl.id : '');
@@ -3722,7 +3756,7 @@ export default function App() {
                                       <div className="space-y-1">
                                         {tlTasks.map(t => (
                                           <div key={t.id} className="h-[26px] flex items-center">
-                                            <span>{t.deadline}</span>
+                                            <span>{formatDeadline(t.deadline)}</span>
                                           </div>
                                         ))}
                                       </div>
@@ -4364,7 +4398,7 @@ export default function App() {
                               title: newTaskTitle.trim(),
                               description: newTaskDesc.trim(),
                               priority: newTaskPriority,
-                              deadline: newTaskDeadline || new Date().toISOString().split('T')[0],
+                              deadline: newTaskDeadline || getDefaultDeadlineString(),
                               status: 'Pending',
                               attachment: newTaskAttachment.trim(),
                               createdAt: new Date().toISOString()
@@ -4375,7 +4409,7 @@ export default function App() {
                             setNewTaskTitle('');
                             setNewTaskDesc('');
                             setNewTaskPriority('Medium');
-                            setNewTaskDeadline(new Date().toISOString().split('T')[0]);
+                            setNewTaskDeadline(getDefaultDeadlineString());
                             setNewTaskAssigneeId('');
                             setNewTaskAttachment('');
                             await fetchData();
@@ -4438,7 +4472,7 @@ export default function App() {
                             <div className="space-y-1">
                               <label className="text-[10px] uppercase font-bold tracking-wider">Deadline</label>
                               <input
-                                type="date"
+                                type="datetime-local"
                                 required
                                 value={newTaskDeadline}
                                 onChange={(e) => setNewTaskDeadline(e.target.value)}
@@ -4518,7 +4552,7 @@ export default function App() {
                                             {t.priority}
                                           </span>
                                         </td>
-                                        <td className="py-2.5 px-3 text-on-surface-variant font-medium">{t.deadline}</td>
+                                        <td className="py-2.5 px-3 text-on-surface-variant font-medium">{formatDeadline(t.deadline)}</td>
                                         <td className="py-2.5 px-3">
                                           <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
                                             {t.status}
@@ -5628,7 +5662,7 @@ export default function App() {
                               <div key={t.id} className="py-3 flex justify-between items-center">
                                 <div>
                                   <p className="font-bold text-sm text-on-surface">{t.title}</p>
-                                  <p className="text-[11px] text-on-surface-variant font-medium mt-0.5">Due: {t.deadline}</p>
+                                  <p className="text-[11px] text-on-surface-variant font-medium mt-0.5">Due: {formatDeadline(t.deadline)}</p>
                                 </div>
                                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                                   t.priority === 'High' ? 'bg-red-50 text-error' : t.priority === 'Medium' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'
@@ -5749,7 +5783,7 @@ export default function App() {
                                           setNewTaskTitle('');
                                           setNewTaskDesc('');
                                           setNewTaskPriority('Medium');
-                                          setNewTaskDeadline(new Date().toISOString().split('T')[0]);
+                                          setNewTaskDeadline(getDefaultDeadlineString());
                                           setNewTaskAttachment('');
                                           setNewTaskAssigneeId(intern.id);
                                           setIsAddTaskModalOpen(true);
@@ -5857,7 +5891,7 @@ export default function App() {
                             setNewTaskTitle('');
                             setNewTaskDesc('');
                             setNewTaskPriority('Medium');
-                            setNewTaskDeadline(new Date().toISOString().split('T')[0]);
+                            setNewTaskDeadline(getDefaultDeadlineString());
                             setNewTaskAssigneeId(currentUser.id);
                             setNewTaskAttachment('');
                             setIsAddTaskModalOpen(true);
@@ -5936,7 +5970,7 @@ export default function App() {
                                 <div className="flex justify-between items-center text-[10px] text-on-surface-variant font-semibold">
                                   <div className="flex items-center gap-1">
                                     <Calendar className="w-3 h-3 text-on-surface-variant" />
-                                    <span>Deadline: {t.deadline}</span>
+                                    <span>Deadline: {formatDeadline(t.deadline)}</span>
                                   </div>
                                 </div>
 
@@ -6906,7 +6940,7 @@ export default function App() {
                 <div className="space-y-1">
                   <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Deadline</label>
                   <input
-                    type="date"
+                    type="datetime-local"
                     value={newTaskDeadline}
                     onChange={(e) => setNewTaskDeadline(e.target.value)}
                     className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none"

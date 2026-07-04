@@ -1,3 +1,4 @@
+// Z-Hajirii Core TypeScript Definitions
 export interface Employee {
   id: string;
   name: string;

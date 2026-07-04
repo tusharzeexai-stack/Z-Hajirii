@@ -1029,6 +1029,14 @@ export default function App() {
     currentMsgs.push(newMsg);
     localStorage.setItem('zhajirii_chat_messages', JSON.stringify(currentMsgs));
     setChatMessages(currentMsgs);
+
+    // Trigger notification for message recipient
+    await createNotification(
+      receiverId,
+      'New Message',
+      `You received a new message from ${currentUser.fullName}: "${msg.substring(0, 35)}${msg.length > 35 ? '...' : ''}"`,
+      'System'
+    );
   };
 
   const fetchLeaveRequests = async () => {
@@ -1508,6 +1516,7 @@ export default function App() {
     if (!currentUser) return;
     const interval = setInterval(() => {
       fetchChatMessages();
+      fetchNotifications();
     }, 3000);
     return () => clearInterval(interval);
   }, [currentUser]);

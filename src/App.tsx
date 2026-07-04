@@ -35,7 +35,8 @@ import {
   Phone,
   Bookmark,
   CalendarClock,
-  Award
+  Award,
+  MessageSquare
 } from 'lucide-react';
 import bcrypt from 'bcryptjs';
 

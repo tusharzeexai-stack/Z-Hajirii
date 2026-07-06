@@ -5609,7 +5609,7 @@ export default function App() {
                     </div>
 
                     {/* Bento metrics */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div className="bg-white p-4 rounded-xl border border-outline-variant/60 shadow-sm">
                         <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Pending Tasks</p>
                         <p className="text-3xl font-extrabold text-primary mt-1">{employeeStats.pendingTasks}</p>
@@ -5630,14 +5630,6 @@ export default function App() {
                         <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Approved Leaves</p>
                         <p className="text-3xl font-extrabold text-indigo-600 mt-1">{employeeStats.approvedLeaves}</p>
                         <p className="text-[11px] text-on-surface-variant/80 font-medium mt-1">Total: {employeeStats.totalLeavesDays} days</p>
-                      </div>
-
-                      <div className="bg-white p-4 rounded-xl border border-outline-variant/60 shadow-sm">
-                        <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Leave Balances</p>
-                        <p className="text-xl font-extrabold text-on-surface mt-1.5 flex flex-wrap gap-1.5">
-                          <span className="text-xs bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200">Casual: {15 - leaveRequests.filter(l => l.userId === currentUser.id && l.leaveType === 'Casual' && l.status === 'Approved').reduce((acc, curr) => acc + curr.totalDays, 0)}</span>
-                          <span className="text-xs bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-200">Sick: {10 - leaveRequests.filter(l => l.userId === currentUser.id && l.leaveType === 'Sick' && l.status === 'Approved').reduce((acc, curr) => acc + curr.totalDays, 0)}</span>
-                        </p>
                       </div>
                     </div>
 

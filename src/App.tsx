@@ -3290,18 +3290,9 @@ export default function App() {
                 </div>
 
                 <div className="space-y-1">
-                  <div className="flex justify-between items-center">
-                    <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider" htmlFor="password">
-                      Password
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => showToast('Initial setup admin: Z-Hajirii / Admin@Hajirii')}
-                      className="text-xs font-semibold text-primary hover:underline transition-all cursor-pointer"
-                    >
-                      Default Account Details?
-                    </button>
-                  </div>
+                  <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider" htmlFor="password">
+                    Password
+                  </label>
                   <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <Lock className="w-5 h-5 text-on-surface-variant" />

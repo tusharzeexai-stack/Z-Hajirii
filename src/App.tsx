@@ -2129,13 +2129,18 @@ export default function App() {
     const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
     const totalHours = calculateDuration(existingLog.clockIn, timeStr);
 
+    const breakMins = getBreakMinutes(existingLog.totalHours);
+    const existingExtraMins = getExtraHoursMinutes(existingLog.totalHours);
+    const existingAllowance = getBreakAllowanceMinutes(existingLog.totalHours);
+    const serializedTotalHours = `${totalHours}|${breakMins}|${clockOutWorkSummary.trim()}|${existingExtraMins}|${existingAllowance}`;
+
     try {
       // 1. Clock out in attendance logs
       const { error: clockOutError } = await supabase
         .from('attendance_logs')
         .update({
           clock_out: timeStr,
-          total_hours: totalHours
+          total_hours: serializedTotalHours
         })
         .eq('id', existingLog.id);
 
@@ -6279,11 +6284,17 @@ export default function App() {
                               </div>
 
                               <div className="space-y-3 pt-3 border-t border-outline-variant/20">
-                                <div className="flex justify-between items-center text-[10px] text-on-surface-variant font-semibold">
+                                <div className="flex flex-col gap-1.5 text-[10px] text-on-surface-variant font-semibold">
                                   <div className="flex items-center gap-1">
                                     <Calendar className="w-3 h-3 text-on-surface-variant" />
                                     <span>Deadline: {formatDeadline(t.deadline)}</span>
                                   </div>
+                                  {t.status === 'Completed' && t.completedAt && (
+                                    <div className="flex items-center gap-1 text-emerald-700 font-bold">
+                                      <CheckCircle className="w-3 h-3 text-emerald-600" />
+                                      <span>Completed: {new Date(t.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                    </div>
+                                  )}
                                 </div>
 
                                 {t.attachment && (

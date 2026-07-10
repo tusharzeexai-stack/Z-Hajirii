@@ -3621,7 +3621,7 @@ export default function App() {
                     </div>
 
                     {/* Stats Bento Grid */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div className="bg-surface-container-lowest p-4 rounded-xl border border-outline-variant shadow-sm flex flex-col justify-between">
                         <span className="text-xs text-on-surface-variant font-bold uppercase tracking-wider">Total Corporate Size</span>
                         <div className="flex items-baseline gap-2 mt-2">
@@ -3631,19 +3631,18 @@ export default function App() {
                       </div>
 
                       <div className="bg-surface-container-lowest p-4 rounded-xl border border-outline-variant shadow-sm flex flex-col justify-between">
-                        <span className="text-xs text-on-surface-variant font-bold uppercase tracking-wider">Present Today</span>
-                        <div className="flex items-baseline gap-2 mt-2">
-                          <span className="text-3xl font-extrabold text-emerald-600">{stats.present}</span>
-                          <span className="text-xs text-on-surface-variant font-medium">active</span>
+                        <div>
+                          <span className="text-xs text-on-surface-variant font-bold uppercase tracking-wider">Present Today</span>
+                          <div className="flex items-baseline gap-2 mt-2">
+                            <span className="text-3xl font-extrabold text-emerald-600">{stats.present + stats.late}</span>
+                            <span className="text-xs text-on-surface-variant font-medium">active</span>
+                          </div>
                         </div>
-                      </div>
-
-                      <div className="bg-surface-container-lowest p-4 rounded-xl border border-outline-variant shadow-sm flex flex-col justify-between">
-                        <span className="text-xs text-on-surface-variant font-bold uppercase tracking-wider">Late arrivals</span>
-                        <div className="flex items-baseline gap-2 mt-2">
-                          <span className="text-3xl font-extrabold text-amber-500">{stats.late}</span>
-                          <span className="text-xs text-on-surface-variant font-medium">delayed</span>
-                        </div>
+                        {stats.late > 0 && (
+                          <span className="text-[10px] text-amber-600 font-bold mt-1">
+                            (including {stats.late} late arrivals)
+                          </span>
+                        )}
                       </div>
 
                       <div className="bg-surface-container-lowest p-4 rounded-xl border border-outline-variant shadow-sm flex flex-col justify-between">
@@ -3708,18 +3707,29 @@ export default function App() {
                                   </td>
                                   <td className="py-3 px-4 text-xs font-semibold text-on-surface-variant">{emp.role}</td>
                                   <td className="py-3 px-4">
-                                    <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${
-                                      status === 'Present'
-                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                        : status === 'Late'
-                                        ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                        : 'bg-red-50 text-red-700 border border-red-200'
-                                    }`}>
-                                      <span className={`w-1.5 h-1.5 rounded-full ${
-                                        status === 'Present' ? 'bg-emerald-500' : status === 'Late' ? 'bg-amber-500' : 'bg-red-500'
-                                      }`}></span>
-                                      {status}
-                                    </span>
+                                    {status === 'Late' ? (
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                          Present
+                                        </span>
+                                        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                          Late
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                                        status === 'Present'
+                                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                          : 'bg-red-50 text-red-700 border border-red-200'
+                                      }`}>
+                                        <span className={`w-1.5 h-1.5 rounded-full ${
+                                          status === 'Present' ? 'bg-emerald-500' : 'bg-red-500'
+                                        }`}></span>
+                                        {status}
+                                      </span>
+                                    )}
                                   </td>
                                   <td className="py-3 px-4 text-xs font-medium">
                                     <div className="flex flex-col gap-0.5">
@@ -4135,12 +4145,19 @@ export default function App() {
                                         <option value="Late">Late</option>
                                         <option value="Absent">Absent</option>
                                       </select>
+                                    ) : status === 'Late' ? (
+                                      <div className="flex items-center gap-1 flex-wrap">
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                          Present
+                                        </span>
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200">
+                                          Late
+                                        </span>
+                                      </div>
                                     ) : (
                                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                                         status === 'Present'
                                           ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                          : status === 'Late'
-                                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
                                           : 'bg-red-50 text-red-700 border border-red-200'
                                       }`}>
                                         {status}
@@ -5647,20 +5664,30 @@ export default function App() {
                                           <option value="Absent">Absent</option>
                                         </select>
                                       ) : (
-                                         <div className="flex flex-col items-start gap-1">
-                                           <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
-                                             log.status === 'Present' ? 'bg-emerald-100 text-emerald-800' :
-                                             log.status === 'Late' ? 'bg-amber-100 text-amber-800' :
-                                             'bg-red-100 text-red-800'
-                                           }`}>
-                                             {log.status}
-                                           </span>
-                                           {log.status === 'Late' && log.clockIn && calculateMinutesLate(log.clockIn) > 0 && (
-                                             <span className="text-[10px] text-amber-600 font-semibold whitespace-nowrap">
-                                               Late by {calculateMinutesLate(log.clockIn)} mins
-                                             </span>
-                                           )}
-                                         </div>
+                                          <div className="flex flex-col items-start gap-1">
+                                            {log.status === 'Late' ? (
+                                              <div className="flex items-center gap-1.5 flex-wrap">
+                                                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                                                  Present
+                                                </span>
+                                                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">
+                                                  Late
+                                                </span>
+                                              </div>
+                                            ) : (
+                                              <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                                                log.status === 'Present' ? 'bg-emerald-100 text-emerald-800' :
+                                                'bg-red-100 text-red-800'
+                                              }`}>
+                                                {log.status}
+                                              </span>
+                                            )}
+                                            {log.status === 'Late' && log.clockIn && calculateMinutesLate(log.clockIn) > 0 && (
+                                              <span className="text-[10px] text-amber-600 font-semibold whitespace-nowrap">
+                                                Late by {calculateMinutesLate(log.clockIn)} mins
+                                              </span>
+                                            )}
+                                          </div>
                                       )}
                                     </td>
                                     <td className="px-6 py-4 text-center">
@@ -6833,92 +6860,600 @@ export default function App() {
                 {/* 10. EMPLOYEE PROFILE */}
                 {currentTab === 'EmpProfile' && selectedEmployeeForProfile && (
                   <div className="space-y-6 animate-fade-in">
-                    {/* Reuse Admin analytics component scoped to current user */}
-                    <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-6">
-                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-outline-variant/20 pb-4">
-                        <div className="flex items-center gap-4">
-                          <img src={selectedEmployeeForProfile.avatarUrl} alt={selectedEmployeeForProfile.name} className="w-16 h-16 rounded-full object-cover border border-outline-variant" />
-                          <div>
-                            <h2 className="font-bold text-xl text-primary">{selectedEmployeeForProfile.name}</h2>
-                            <p className="text-xs text-on-surface-variant font-semibold uppercase tracking-wider">{selectedEmployeeForProfile.role} • Corporate ID: {selectedEmployeeForProfile.empId}</p>
+                    {/* Detailed User Profile Header */}
+                    <section className="bg-white border border-outline-variant rounded-2xl p-8 flex flex-col md:flex-row items-center gap-6 shadow-sm">
+                      <div className="relative shrink-0 group">
+                        {selectedEmployeeForProfile.avatarUrl ? (
+                          <img
+                            src={selectedEmployeeForProfile.avatarUrl}
+                            alt={selectedEmployeeForProfile.name}
+                            className="w-24 h-24 rounded-full object-cover border-2 border-primary shadow-md group-hover:brightness-95 transition-all"
+                          />
+                        ) : (
+                          <div className="w-24 h-24 rounded-full border-2 border-primary/20 bg-primary/5 flex items-center justify-center text-primary text-3xl font-extrabold shadow-inner shrink-0">
+                            {selectedEmployeeForProfile.name.charAt(0)}
                           </div>
+                        )}
+                      </div>
+
+                      <div className="flex-1 text-center md:text-left space-y-2">
+                        <div className="space-y-0.5">
+                          <h2 className="text-3xl font-bold text-[#0f4c81] tracking-tight">{selectedEmployeeForProfile.name}</h2>
+                          <p className="text-lg text-secondary font-semibold">{selectedEmployeeForProfile.role}</p>
                         </div>
+                        <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-xs font-semibold text-on-surface-variant">
+                          <span className="flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary/40"></span>
+                            <span>{selectedEmployeeForProfile.email}</span>
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary/40"></span>
+                            <span>ID: {selectedEmployeeForProfile.empId}</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row gap-2 shrink-0 w-full md:w-auto">
                         <button
                           onClick={() => setIsProfileExportModalOpen(true)}
-                          className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-on-primary px-4 py-2 rounded-full text-xs font-semibold shadow-sm transition-all cursor-pointer"
+                          className="px-6 py-2 border border-outline text-on-surface-variant hover:bg-slate-50 font-semibold text-sm rounded-lg transition-all cursor-pointer shadow-xs"
                         >
-                          <Download className="w-3.5 h-3.5" />
-                          Export My Records
+                          Export Profile
                         </button>
                       </div>
+                    </section>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-                        <div className="bg-surface-container-low/30 p-4 rounded-xl border border-outline-variant/40">
-                          <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Present Count</p>
-                          <p className="text-2xl font-extrabold text-emerald-600 mt-1">{profileStats.present + profileStats.late}</p>
-                          <p className="text-[10px] text-on-surface-variant/80 font-semibold mt-1 text-amber-600">
-                            On-time days {profileStats.late > 0 && `(including ${profileStats.late} late)`}
-                          </p>
+                    {/* Summary Bento Stats */}
+                    <section className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                      <div className="bg-white border border-outline-variant rounded-2xl p-6 flex items-center gap-4 shadow-sm">
+                        <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
+                          <Check className="w-6 h-6" />
                         </div>
-
-                        <div className="bg-surface-container-low/30 p-4 rounded-xl border border-outline-variant/40">
-                          <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Absent Days</p>
-                          <p className="text-2xl font-extrabold text-error mt-1">{profileStats.absent}</p>
-                          <p className="text-[10px] text-on-surface-variant/80 font-medium mt-1">Unexcused inactive days</p>
-                        </div>
-
-                        <div className="bg-surface-container-low/30 p-4 rounded-xl border border-outline-variant/40">
-                          <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Attendance Rate</p>
-                          <p className="text-2xl font-extrabold text-primary mt-1">{profileStats.rate}</p>
-                          <p className="text-[10px] text-on-surface-variant/80 font-medium mt-1">Calculated from {profileStats.total} logs</p>
+                        <div>
+                          <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Present Days</p>
+                          <p className="text-2xl font-bold text-emerald-700">{profileStats.present + profileStats.late}</p>
+                          {profileStats.late > 0 && (
+                            <p className="text-[10px] text-amber-600 font-bold mt-1">
+                              (including {profileStats.late} late days)
+                            </p>
+                          )}
                         </div>
                       </div>
 
-                      {/* Chart visualization */}
-                      <div className="space-y-4 pt-4 border-t border-outline-variant/20">
-                        <div className="flex justify-between items-center">
-                          <h3 className="font-bold text-sm text-primary uppercase tracking-wider">My Attendance & hours trend</h3>
-                          <div className="flex items-center gap-1.5 p-1 bg-surface-container-low rounded-lg">
-                            <button
-                              onClick={() => setTrendFilter('weekly')}
-                              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${trendFilter === 'weekly' ? 'bg-white text-primary shadow-xs' : 'text-on-surface-variant'}`}
-                            >
-                              Weekly
-                            </button>
-                            <button
-                              onClick={() => setTrendFilter('monthly')}
-                              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${trendFilter === 'monthly' ? 'bg-white text-primary shadow-xs' : 'text-on-surface-variant'}`}
-                            >
-                              Monthly
-                            </button>
+                      <div className="bg-white border border-outline-variant rounded-2xl p-6 flex items-center gap-4 shadow-sm">
+                        <div className="p-3 bg-red-50 text-error rounded-lg">
+                          <X className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Absent Days</p>
+                          <p className="text-2xl font-bold text-error">{profileStats.absent}</p>
+                        </div>
+                      </div>
+
+                      <div className="bg-white border border-outline-variant rounded-2xl p-6 flex items-center gap-4 shadow-sm border-l-4 border-primary">
+                        <div className="flex-1">
+                          <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Attendance Rate</p>
+                          <p className="text-2xl font-bold text-primary">{profileStats.rate}</p>
+                        </div>
+                        <div className="relative h-12 w-12 shrink-0">
+                          <svg className="h-full w-full" viewBox="0 0 36 36">
+                            <path
+                              className="text-slate-100 stroke-current"
+                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                              fill="none"
+                              strokeWidth="3.5"
+                            ></path>
+                            <path
+                              className="text-primary stroke-current"
+                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                              fill="none"
+                              strokeDasharray={`${parseFloat(profileStats.rate)}, 100`}
+                              strokeLinecap="round"
+                              strokeWidth="3.5"
+                            ></path>
+                          </svg>
+                        </div>
+                      </div>
+                    </section>
+
+                    {/* Trends & Distribution charts */}
+                    <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      {/* Distribution circle */}
+                      <div className="bg-white border border-outline-variant rounded-2xl p-6 lg:col-span-1 shadow-sm">
+                        <h3 className="font-bold text-lg text-on-surface mb-6">Status Distribution</h3>
+                        <div className="relative h-64 flex items-center justify-center">
+                          <div className="relative h-48 w-48 rounded-full border-[20px] border-emerald-500 flex items-center justify-center flex-col">
+                            <span className="font-bold text-2xl text-primary">{profileStats.total}</span>
+                            <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Total Days</span>
+                          </div>
+                        </div>
+                        <div className="space-y-2 mt-4 text-sm font-semibold">
+                          <div className="flex items-center justify-between">
+                            <span className="flex items-center gap-2"><span className="w-3 h-3 bg-emerald-500 rounded-full"></span> Present</span>
+                            <span>{profileStats.presentPercent}%</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="flex items-center gap-2"><span className="w-3 h-3 bg-amber-500 rounded-full"></span> Late</span>
+                            <span>{profileStats.latePercent}%</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="flex items-center gap-2"><span className="w-3 h-3 bg-red-500 rounded-full"></span> Absent</span>
+                            <span>{profileStats.absentPercent}%</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Attendance Trends chart */}
+                      <div className="bg-white border border-outline-variant rounded-2xl p-6 lg:col-span-2 shadow-sm">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                          <h3 className="font-bold text-lg text-on-surface capitalize">{trendFilter} {chartMetric === 'status' ? 'Attendance' : 'Working Hours'} Trend</h3>
+                          
+                          <div className="flex flex-wrap gap-2">
+                            {/* Metric Toggle */}
+                            <div className="flex gap-1 bg-surface-container-low p-1 rounded-lg text-[11px]">
+                              <button 
+                                onClick={() => {
+                                  setChartMetric('status');
+                                  showToast('Showing attendance status');
+                                }}
+                                className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${chartMetric === 'status' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/30'}`}
+                              >
+                                Status
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  setChartMetric('hours');
+                                  showToast('Showing working hours vs 8h average');
+                                }}
+                                className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${chartMetric === 'hours' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/30'}`}
+                              >
+                                Working Hours
+                              </button>
+                            </div>
+
+                            {/* Trend Filter Toggle */}
+                            <div className="flex gap-1 bg-surface-container-low p-1 rounded-lg text-[11px]">
+                              <button 
+                                onClick={() => setTrendFilter('weekly')}
+                                className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${trendFilter === 'weekly' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/30'}`}
+                              >
+                                Weekly
+                              </button>
+                              <button 
+                                onClick={() => setTrendFilter('monthly')}
+                                className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${trendFilter === 'monthly' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/30'}`}
+                              >
+                                Monthly
+                              </button>
+                              <button 
+                                onClick={() => setTrendFilter('yearly')}
+                                className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${trendFilter === 'yearly' ? 'bg-white shadow-sm text-primary font-bold' : 'text-on-surface-variant hover:bg-white/30'}`}
+                              >
+                                Yearly
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="h-64 pt-8 pb-2 pl-12 pr-4 border-b border-outline-variant/30">
+                          <div className="relative h-full w-full flex items-end justify-between gap-4">
+                            {chartMetric === 'hours' && (
+                              <div 
+                                className="absolute left-0 right-0 border-t-2 border-dashed border-red-500/40 z-20 pointer-events-none transition-all duration-300"
+                                style={{ bottom: `${(8 / maxHoursScale) * 100}%` }}
+                              >
+                                <span className="absolute right-full mr-2 -top-2 bg-red-50 text-red-600 px-1.5 py-0.5 rounded text-[10px] font-extrabold border border-red-200/60 whitespace-nowrap shadow-sm">
+                                  8hr
+                                </span>
+                              </div>
+                            )}
+
+                            {chartData.map((item, index) => {
+                              const hasData = item.total > 0;
+                              const w = item.avgWorkingHours || 0;
+                              const exceeds = w >= 8;
+                              const workedPct = (Math.min(w, 8) / maxHoursScale) * 100;
+                              const excessPct = exceeds ? ((w - 8) / maxHoursScale) * 100 : 0;
+                              const deficitPct = !exceeds ? ((8 - w) / maxHoursScale) * 100 : 0;
+
+                              return (
+                                <div key={index} className="flex-1 flex flex-col justify-end h-full relative group">
+                                  {hasData ? (
+                                    <div className={`w-full flex flex-col justify-end rounded-t-md overflow-hidden transition-all duration-300 ${item.isToday || item.isCurrent ? 'ring-2 ring-primary ring-offset-2' : ''}`} style={{ height: '100%' }}>
+                                      {chartMetric === 'status' ? (
+                                        <>
+                                          {item.presentPercent > 0 && (
+                                            <div 
+                                              className="bg-emerald-500 hover:brightness-105 transition-all" 
+                                              style={{ height: `${item.presentPercent}%` }}
+                                              title={`Present: ${item.presentPercent.toFixed(0)}%`}
+                                            />
+                                          )}
+                                          {item.latePercent > 0 && (
+                                            <div 
+                                              className="bg-amber-500 hover:brightness-105 transition-all" 
+                                              style={{ height: `${item.latePercent}%` }}
+                                              title={`Late: ${item.latePercent.toFixed(0)}%`}
+                                            />
+                                          )}
+                                          {item.absentPercent > 0 && (
+                                            <div 
+                                              className="bg-red-500 hover:brightness-105 transition-all" 
+                                              style={{ height: `${item.absentPercent}%` }}
+                                              title={`Absent: ${item.absentPercent.toFixed(0)}%`}
+                                            />
+                                          )}
+                                        </>
+                                      ) : (
+                                        <>
+                                          {exceeds ? (
+                                            <>
+                                              {excessPct > 0 && (
+                                                <div 
+                                                  className="bg-blue-500 hover:brightness-105 transition-all" 
+                                                  style={{ height: `${excessPct}%` }}
+                                                />
+                                              )}
+                                              {workedPct > 0 && (
+                                                <div 
+                                                  className="bg-slate-300 hover:brightness-105 transition-all" 
+                                                  style={{ height: `${workedPct}%` }}
+                                                />
+                                              )}
+                                            </>
+                                          ) : (
+                                            <>
+                                              {deficitPct > 0 && (
+                                                <div 
+                                                  className="bg-yellow-400 hover:brightness-105 transition-all" 
+                                                  style={{ height: `${deficitPct}%` }}
+                                                />
+                                              )}
+                                              {workedPct > 0 && (
+                                                <div 
+                                                  className="bg-slate-300 hover:brightness-105 transition-all" 
+                                                  style={{ height: `${workedPct}%` }}
+                                                />
+                                              )}
+                                            </>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div className="w-full h-1 bg-outline-variant/20 rounded-full" />
+                                  )}
+
+                                  {hasData && (
+                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-900/95 backdrop-blur-md text-white text-[10px] p-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10 whitespace-nowrap border border-white/10">
+                                      {chartMetric === 'status' ? (
+                                        <>
+                                          <p className="font-bold text-center border-b border-white/10 pb-1 mb-1">{item.label} Attendance</p>
+                                          <p className="flex items-center gap-1.5"><span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Present: {item.present} ({item.presentPercent.toFixed(0)}%)</p>
+                                          <p className="flex items-center gap-1.5"><span className="w-2 h-2 bg-amber-500 rounded-full"></span> Late: {item.late} ({item.latePercent.toFixed(0)}%)</p>
+                                          <p className="flex items-center gap-1.5"><span className="w-2 h-2 bg-red-500 rounded-full"></span> Absent: {item.absent} ({item.absentPercent.toFixed(0)}%)</p>
+                                          {item.minsLate > 0 && (
+                                            <p className="text-amber-400 font-bold border-t border-white/10 pt-1 mt-1 flex items-center gap-1">
+                                              ⚠️ {trendFilter === 'Weekly' ? `Late by ${item.minsLate} mins` : `Late total: ${item.minsLate} mins`}
+                                            </p>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <>
+                                          <p className="font-bold text-center border-b border-white/10 pb-1 mb-1">{item.label} Working Hours</p>
+                                          <p className="flex items-center gap-1.5">
+                                            <span className="w-2 h-2 bg-slate-300 rounded-full"></span> 
+                                            Worked: {w.toFixed(2)}h
+                                          </p>
+                                          {w >= 8 ? (
+                                            <p className="flex items-center gap-1.5 text-blue-400 font-semibold">
+                                              <span className="w-2 h-2 bg-blue-500 rounded-full"></span> 
+                                              Exceeds Average: +{(w - 8).toFixed(2)}h
+                                            </p>
+                                          ) : (
+                                            <p className="flex items-center gap-1.5 text-yellow-400 font-semibold">
+                                              <span className="w-2 h-2 bg-yellow-400 rounded-full"></span> 
+                                              Deficit Hours: -{(8 - w).toFixed(2)}h
+                                            </p>
+                                          )}
+                                          {item.minsLate > 0 && (
+                                            <p className="text-amber-400 font-bold border-t border-white/10 pt-1 mt-1 flex items-center gap-1">
+                                              ⚠️ {trendFilter === 'Weekly' ? `Late by ${item.minsLate} mins` : `Late total: ${item.minsLate} mins`}
+                                            </p>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
+                                  
+                                  {item.isWeekend && (
+                                    <span className="absolute inset-0 flex items-center justify-center text-[9px] font-semibold text-on-surface-variant/40 select-none pointer-events-none rotate-90 sm:rotate-0">
+                                      Weekend
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
 
-                        <div className="h-48 flex items-end justify-between gap-3 pt-6 border-b border-outline-variant/40">
-                          {chartData.map((item, index) => {
-                            const heightPct = item.total > 0 ? (item.presentPercent + item.latePercent) : 0;
-                            const hoursPct = (item.avgWorkingHours / maxHoursScale) * 100;
+                        <div className="flex justify-between pl-12 pr-4 mt-4 text-xs font-semibold text-on-surface-variant">
+                          {chartData.map((item, index) => (
+                            <span 
+                              key={index} 
+                              className={`flex-1 text-center truncate ${item.isToday || item.isCurrent ? 'text-primary font-bold' : ''}`}
+                            >
+                              {item.label}
+                            </span>
+                          ))}
+                        </div>
 
-                            return (
-                              <div key={index} className="flex-1 flex flex-col items-center gap-2 group h-full justify-end">
-                                <div className="w-full flex justify-center gap-1 h-full items-end relative">
-                                  <div
-                                    style={{ height: `${heightPct}%` }}
-                                    className="w-4 sm:w-6 bg-primary/20 group-hover:bg-primary/45 rounded-t transition-all"
-                                  ></div>
-                                  <div
-                                    style={{ height: `${hoursPct}%` }}
-                                    className="w-2 sm:w-3 bg-emerald-500 rounded-t transition-all"
-                                    title={`Hours: ${item.avgWorkingHours.toFixed(1)}h`}
-                                  ></div>
-                                </div>
-                                <span className="text-[10px] text-on-surface-variant font-bold truncate max-w-[40px]">{item.label}</span>
-                              </div>
-                            );
-                          })}
+                        <div className="flex justify-center gap-6 mt-6 pt-4 border-t border-outline-variant/30 text-xs font-semibold">
+                          {chartMetric === 'status' ? (
+                            <>
+                              <span className="flex items-center gap-2 text-on-surface-variant">
+                                <span className="w-3 h-3 bg-emerald-500 rounded-full"></span> Present
+                              </span>
+                              <span className="flex items-center gap-2 text-on-surface-variant">
+                                <span className="w-3 h-3 bg-amber-500 rounded-full"></span> Late
+                              </span>
+                              <span className="flex items-center gap-2 text-on-surface-variant">
+                                <span className="w-3 h-3 bg-red-500 rounded-full"></span> Absent
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="flex items-center gap-2 text-on-surface-variant">
+                                <span className="w-3 h-3 bg-slate-300 rounded-full"></span> Standard Base (8h)
+                              </span>
+                              <span className="flex items-center gap-2 text-on-surface-variant">
+                                <span className="w-3 h-3 bg-blue-500 rounded-full"></span> Overtime Exceeded (Blue)
+                              </span>
+                              <span className="flex items-center gap-2 text-on-surface-variant">
+                                <span className="w-3 h-3 bg-yellow-400 rounded-full"></span> Deficit Below Average (Yellow)
+                              </span>
+                            </>
+                          )}
                         </div>
                       </div>
-                    </div>
+                    </section>
+
+                    {/* Individual Logs History Table */}
+                    <section className="bg-white border border-outline-variant rounded-2xl overflow-hidden shadow-sm">
+                      <div className="px-6 py-4 border-b border-outline-variant bg-white">
+                        <h3 className="font-bold text-lg text-[#0f4c81]">Personal History Logs</h3>
+                      </div>
+                      
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 text-on-surface-variant text-xs font-semibold uppercase tracking-wider">
+                              <th className="px-6 py-3">Date</th>
+                              <th className="px-6 py-3">Clock In</th>
+                              <th className="px-6 py-3">Clock Out</th>
+                              <th className="px-6 py-3">Working Hours</th>
+                              <th className="px-6 py-3">Break</th>
+                              <th className="px-6 py-3">Extra Hours</th>
+                              <th className="px-6 py-3">Break Allowance</th>
+                              <th className="px-6 py-3">Productivity</th>
+                              <th className="px-6 py-3">Remark</th>
+                              <th className="px-6 py-3">Status</th>
+                              {currentUser?.role === 'Admin' && <th className="px-6 py-3 text-center">Action</th>}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-outline-variant/30">
+                            {attendanceLogs
+                              .filter(log => log.employeeId === selectedEmployeeForProfile.id)
+                              .map((log) => {
+                                const isEditing = editingLogId === log.id && currentUser?.role === 'Admin';
+                                return (
+                                  <tr key={log.id} className="hover:bg-primary/5 transition-colors">
+                                    <td className="px-6 py-4 font-semibold text-sm">{log.date}</td>
+                                    <td className="px-6 py-4 text-sm text-on-surface-variant">
+                                      {isEditing ? (
+                                        <input
+                                          type="time"
+                                          disabled={editStatus === 'Absent'}
+                                          value={editClockIn}
+                                          onChange={(e) => setEditClockIn(e.target.value)}
+                                          className="bg-white border border-outline-variant rounded p-1 text-sm outline-none focus:ring-1 focus:ring-primary w-28"
+                                        />
+                                      ) : selectedEmployeeForProfile && log.date === todayDateString && (log.status === 'Present' || log.status === 'Late') && (log.clockOut === '--:--' || !log.clockOut) ? (
+                                        <button
+                                          onClick={() => handleClockOut(selectedEmployeeForProfile.id)}
+                                          className="px-2 py-0.5 bg-primary text-on-primary font-bold text-[10px] rounded hover:brightness-110 active:scale-95 transition-all cursor-pointer shadow-sm"
+                                        >
+                                          Clock Out
+                                        </button>
+                                      ) : (
+                                        log.clockOut
+                                      )}
+                                    </td>
+                                    <td className="px-6 py-4 text-sm text-on-surface-variant">
+                                      {isEditing ? (
+                                        <input
+                                          type="time"
+                                          disabled={editStatus === 'Absent'}
+                                          value={editClockOut}
+                                          onChange={(e) => setEditClockOut(e.target.value)}
+                                          className="bg-white border border-outline-variant rounded p-1 text-sm outline-none focus:ring-1 focus:ring-primary w-28"
+                                        />
+                                      ) : (
+                                        log.clockOut
+                                      )}
+                                    </td>
+                                    <td className="px-6 py-4 text-sm font-semibold text-primary">
+                                      {isEditing ? (
+                                        calculateDuration(
+                                          editStatus === 'Absent' ? '--:--' : time24To12(editClockIn),
+                                          editStatus === 'Absent' ? '--:--' : time24To12(editClockOut)
+                                        )
+                                      ) : (
+                                        log.totalHours.split('|')[0]
+                                      )}
+                                    </td>
+                                    <td className="px-6 py-4">
+                                      <select
+                                        disabled={log.status === 'Absent' || isEditing}
+                                        value={getBreakMinutes(log.totalHours)}
+                                        onChange={(e) => handleUpdateBreakMinutes(log.id, parseInt(e.target.value, 10))}
+                                        className="bg-white border border-outline-variant rounded px-2 py-1 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-white"
+                                      >
+                                        <option value="0">0 mins</option>
+                                        <option value="5">5 mins</option>
+                                        <option value="10">10 mins</option>
+                                        <option value="15">15 mins</option>
+                                        <option value="30">30 mins</option>
+                                        <option value="45">45 mins</option>
+                                        <option value="60">60 mins</option>
+                                        <option value="90">90 mins</option>
+                                        <option value="120">120 mins</option>
+                                      </select>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                      {isEditing ? (
+                                        <div className="flex items-center gap-1">
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            value={editExtraHoursHrs}
+                                            onChange={(e) => setEditExtraHoursHrs(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                                            className="bg-white border border-outline-variant rounded p-1 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary w-11 text-center bg-white"
+                                          />
+                                          <span className="text-[10px] text-on-surface-variant font-bold">h</span>
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            max="59"
+                                            value={editExtraHoursMins}
+                                            onChange={(e) => setEditExtraHoursMins(Math.max(0, Math.min(59, parseInt(e.target.value, 10) || 0)))}
+                                            className="bg-white border border-outline-variant rounded p-1 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary w-11 text-center bg-white"
+                                          />
+                                          <span className="text-[10px] text-on-surface-variant font-bold">m</span>
+                                        </div>
+                                      ) : (
+                                        getExtraHoursStr(log.totalHours) === '0h 00m' ? (
+                                          <span className="text-on-surface-variant/40 italic">--</span>
+                                        ) : (
+                                          getExtraHoursStr(log.totalHours)
+                                        )
+                                      )}
+                                    </td>
+                                    <td className="px-6 py-4">
+                                      <select
+                                        disabled={log.status === 'Absent' || isEditing}
+                                        value={getBreakAllowanceMinutes(log.totalHours)}
+                                        onChange={(e) => handleUpdateBreakAllowance(log.id, parseInt(e.target.value, 10))}
+                                        className="bg-white border border-outline-variant rounded px-2 py-1 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-white"
+                                      >
+                                        <option value="0">0 mins</option>
+                                        <option value="15">15 mins</option>
+                                        <option value="45">45 mins</option>
+                                        <option value="60">60 mins</option>
+                                      </select>
+                                    </td>
+                                    <td className="px-6 py-4 text-sm font-bold text-[#0f4c81]">
+                                      {isEditing ? (
+                                        getProductiveHoursStr(
+                                          calculateDuration(
+                                            editStatus === 'Absent' ? '--:--' : time24To12(editClockIn),
+                                            editStatus === 'Absent' ? '--:--' : time24To12(editClockOut)
+                                          ) + `|${getBreakMinutes(log.totalHours)}|${editRemark.trim()}|${editExtraHoursHrs * 60 + editExtraHoursMins}|${getBreakAllowanceMinutes(log.totalHours)}`
+                                        )
+                                      ) : (
+                                        getProductiveHoursStr(log.totalHours)
+                                      )}
+                                    </td>
+                                    <td className="px-6 py-4 text-sm text-on-surface-variant max-w-[180px] truncate">
+                                      {isEditing ? (
+                                        <input
+                                          type="text"
+                                          value={editRemark}
+                                          onChange={(e) => setEditRemark(e.target.value)}
+                                          placeholder="Add remark..."
+                                          className="bg-white border border-outline-variant rounded p-1 text-sm outline-none focus:ring-1 focus:ring-primary w-40"
+                                        />
+                                      ) : (
+                                        getRemark(log.totalHours) || <span className="text-on-surface-variant/40 italic">--</span>
+                                      )}
+                                    </td>
+                                    <td className="px-6 py-4">
+                                      {isEditing ? (
+                                        <select
+                                          value={editStatus}
+                                          onChange={(e) => {
+                                            const newStatus = e.target.value as 'Present' | 'Absent' | 'Late';
+                                            setEditStatus(newStatus);
+                                            if (newStatus === 'Absent') {
+                                              setEditClockIn('');
+                                              setEditClockOut('');
+                                            } else {
+                                              if (!editClockIn) setEditClockIn('09:00');
+                                              if (!editClockOut) setEditClockOut('17:00');
+                                            }
+                                          }}
+                                          className="bg-white border border-outline-variant rounded p-1.5 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary"
+                                        >
+                                          <option value="Present">Present</option>
+                                          <option value="Late">Late</option>
+                                          <option value="Absent">Absent</option>
+                                        </select>
+                                      ) : (
+                                          <div className="flex flex-col items-start gap-1">
+                                            {log.status === 'Late' ? (
+                                              <div className="flex items-center gap-1.5 flex-wrap">
+                                                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                                                  Present
+                                                </span>
+                                                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">
+                                                  Late
+                                                </span>
+                                              </div>
+                                            ) : (
+                                              <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                                                log.status === 'Present' ? 'bg-emerald-100 text-emerald-800' :
+                                                'bg-red-100 text-red-800'
+                                              }`}>
+                                                {log.status}
+                                              </span>
+                                            )}
+                                            {log.status === 'Late' && log.clockIn && calculateMinutesLate(log.clockIn) > 0 && (
+                                              <span className="text-[10px] text-amber-600 font-semibold whitespace-nowrap">
+                                                Late by {calculateMinutesLate(log.clockIn)} mins
+                                              </span>
+                                            )}
+                                          </div>
+                                      )}
+                                    </td>
+                                    {currentUser?.role === 'Admin' && (
+                                      <td className="px-6 py-4 text-center">
+                                        <div className="flex justify-center items-center gap-1.5">
+                                          <button
+                                            title="Edit Attendance Log"
+                                            onClick={() => {
+                                              setEditingLogId(log.id);
+                                              setEditClockIn(time12To24(log.clockIn));
+                                              setEditClockOut(time12To24(log.clockOut));
+                                              setEditStatus(log.status as 'Present' | 'Absent' | 'Late');
+                                              setEditRemark(getRemark(log.totalHours));
+                                              const extraMins = getExtraHoursMinutes(log.totalHours);
+                                              setEditExtraHoursHrs(Math.floor(extraMins / 60));
+                                              setEditExtraHoursMins(extraMins % 60);
+                                            }}
+                                            className="p-1.5 rounded-full border border-outline-variant text-primary hover:bg-primary/10 hover:border-primary active:scale-95 transition-all cursor-pointer"
+                                          >
+                                            <Edit2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    )}
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
                   </div>
                 )}
 

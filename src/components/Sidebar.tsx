@@ -130,6 +130,18 @@ export default function Sidebar({
             </button>
 
             <button
+              onClick={() => onTabChange('TaskDone')}
+              className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-lg transition-all text-left group ${
+                currentTab === 'TaskDone'
+                  ? 'text-primary bg-surface-container-high border-l-4 border-primary font-bold'
+                  : 'text-on-surface-variant hover:bg-surface-container-low hover:text-primary'
+              }`}
+            >
+              <CheckSquare className={`w-5 h-5 ${currentTab === 'TaskDone' ? 'text-primary' : 'text-on-surface-variant group-hover:text-primary'}`} />
+              <span className="font-semibold text-sm">Task Done</span>
+            </button>
+
+            <button
               onClick={() => onTabChange('Reports')}
               className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-lg transition-all text-left group ${
                 currentTab === 'Reports'
@@ -159,17 +171,31 @@ export default function Sidebar({
             </button>
 
             {role === 'Team Leader' && (
-              <button
-                onClick={() => onTabChange('TeamLeaderDashboard')}
-                className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-lg transition-all text-left group ${
-                  currentTab === 'TeamLeaderDashboard'
-                    ? 'text-primary bg-surface-container-high border-l-4 border-primary font-bold'
-                    : 'text-on-surface-variant hover:bg-surface-container-low hover:text-primary'
-                }`}
-              >
-                <UsersIcon className={`w-5 h-5 ${currentTab === 'TeamLeaderDashboard' ? 'text-primary' : 'text-on-surface-variant group-hover:text-primary'}`} />
-                <span className="font-semibold text-sm">Team Leader</span>
-              </button>
+              <>
+                <button
+                  onClick={() => onTabChange('TeamLeaderDashboard')}
+                  className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-lg transition-all text-left group ${
+                    currentTab === 'TeamLeaderDashboard'
+                      ? 'text-primary bg-surface-container-high border-l-4 border-primary font-bold'
+                      : 'text-on-surface-variant hover:bg-surface-container-low hover:text-primary'
+                  }`}
+                >
+                  <UsersIcon className={`w-5 h-5 ${currentTab === 'TeamLeaderDashboard' ? 'text-primary' : 'text-on-surface-variant group-hover:text-primary'}`} />
+                  <span className="font-semibold text-sm">Team Leader</span>
+                </button>
+
+                <button
+                  onClick={() => onTabChange('TaskDone')}
+                  className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-lg transition-all text-left group ${
+                    currentTab === 'TaskDone'
+                      ? 'text-primary bg-surface-container-high border-l-4 border-primary font-bold'
+                      : 'text-on-surface-variant hover:bg-surface-container-low hover:text-primary'
+                  }`}
+                >
+                  <CheckSquare className={`w-5 h-5 ${currentTab === 'TaskDone' ? 'text-primary' : 'text-on-surface-variant group-hover:text-primary'}`} />
+                  <span className="font-semibold text-sm">Task Done</span>
+                </button>
+              </>
             )}
 
             <button

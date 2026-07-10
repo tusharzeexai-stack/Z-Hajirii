@@ -7293,22 +7293,28 @@ export default function App() {
                                       )}
                                     </td>
                                     <td className="px-6 py-4">
-                                      <select
-                                        disabled={log.status === 'Absent' || isEditing}
-                                        value={getBreakMinutes(log.totalHours)}
-                                        onChange={(e) => handleUpdateBreakMinutes(log.id, parseInt(e.target.value, 10))}
-                                        className="bg-white border border-outline-variant rounded px-2 py-1 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-white"
-                                      >
-                                        <option value="0">0 mins</option>
-                                        <option value="5">5 mins</option>
-                                        <option value="10">10 mins</option>
-                                        <option value="15">15 mins</option>
-                                        <option value="30">30 mins</option>
-                                        <option value="45">45 mins</option>
-                                        <option value="60">60 mins</option>
-                                        <option value="90">90 mins</option>
-                                        <option value="120">120 mins</option>
-                                      </select>
+                                      {currentUser?.role === 'Admin' ? (
+                                        <select
+                                          disabled={log.status === 'Absent' || isEditing}
+                                          value={getBreakMinutes(log.totalHours)}
+                                          onChange={(e) => handleUpdateBreakMinutes(log.id, parseInt(e.target.value, 10))}
+                                          className="bg-white border border-outline-variant rounded px-2 py-1 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-white"
+                                        >
+                                          <option value="0">0 mins</option>
+                                          <option value="5">5 mins</option>
+                                          <option value="10">10 mins</option>
+                                          <option value="15">15 mins</option>
+                                          <option value="30">30 mins</option>
+                                          <option value="45">45 mins</option>
+                                          <option value="60">60 mins</option>
+                                          <option value="90">90 mins</option>
+                                          <option value="120">120 mins</option>
+                                        </select>
+                                      ) : (
+                                        <span className="text-xs font-semibold text-on-surface-variant">
+                                          {getBreakMinutes(log.totalHours)} mins
+                                        </span>
+                                      )}
                                     </td>
                                     <td className="px-6 py-4">
                                       {isEditing ? (
@@ -7340,17 +7346,23 @@ export default function App() {
                                       )}
                                     </td>
                                     <td className="px-6 py-4">
-                                      <select
-                                        disabled={log.status === 'Absent' || isEditing}
-                                        value={getBreakAllowanceMinutes(log.totalHours)}
-                                        onChange={(e) => handleUpdateBreakAllowance(log.id, parseInt(e.target.value, 10))}
-                                        className="bg-white border border-outline-variant rounded px-2 py-1 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-white"
-                                      >
-                                        <option value="0">0 mins</option>
-                                        <option value="15">15 mins</option>
-                                        <option value="45">45 mins</option>
-                                        <option value="60">60 mins</option>
-                                      </select>
+                                      {currentUser?.role === 'Admin' ? (
+                                        <select
+                                          disabled={log.status === 'Absent' || isEditing}
+                                          value={getBreakAllowanceMinutes(log.totalHours)}
+                                          onChange={(e) => handleUpdateBreakAllowance(log.id, parseInt(e.target.value, 10))}
+                                          className="bg-white border border-outline-variant rounded px-2 py-1 text-xs font-semibold outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-white"
+                                        >
+                                          <option value="0">0 mins</option>
+                                          <option value="15">15 mins</option>
+                                          <option value="45">45 mins</option>
+                                          <option value="60">60 mins</option>
+                                        </select>
+                                      ) : (
+                                        <span className="text-xs font-semibold text-on-surface-variant">
+                                          {getBreakAllowanceMinutes(log.totalHours)} mins
+                                        </span>
+                                      )}
                                     </td>
                                     <td className="px-6 py-4 text-sm font-bold text-[#0f4c81]">
                                       {isEditing ? (

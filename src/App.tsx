@@ -48,7 +48,8 @@ import {
   TaskRecord,
   LeaveRequestRecord,
   NotificationRecord,
-  AuditLogRecord
+  AuditLogRecord,
+  ChatMessageRecord
 } from './types';
 import { INITIAL_EMPLOYEES, INITIAL_ATTENDANCE_LOGS } from './data';
 import Sidebar from './components/Sidebar';
@@ -330,6 +331,17 @@ export default function App() {
 
   // User CRUD Form States
   const [isUserModalOpen, setIsUserModalOpen] = useState<boolean>(false);
+
+  // Clock Out Work Summary States
+  const [isClockOutModalOpen, setIsClockOutModalOpen] = useState<boolean>(false);
+  const [clockOutWorkSummary, setClockOutWorkSummary] = useState<string>('');
+
+  // Dashboard Task Done Filters
+  const [adminTaskDoneSearch, setAdminTaskDoneSearch] = useState<string>('');
+  const [adminTaskDoneDate, setAdminTaskDoneDate] = useState<string>('');
+  const [tlTaskDoneSearch, setTlTaskDoneSearch] = useState<string>('');
+  const [tlTaskDoneDate, setTlTaskDoneDate] = useState<string>('');
+
   const [editingUser, setEditingUser] = useState<UserRecord | null>(null);
   const [userFormFullName, setUserFormFullName] = useState<string>('');
   const [userFormUsername, setUserFormUsername] = useState<string>('');
@@ -1842,8 +1854,8 @@ export default function App() {
 
   // Disable / Enable User status toggle
   const handleToggleUserStatus = async (user: UserRecord) => {
-    const nextStatus = user.status === 'Active' ? 'Disabled' : 'Active';
-    const updated = {
+    const nextStatus: 'Active' | 'Disabled' = user.status === 'Active' ? 'Disabled' : 'Active';
+    const updated: UserRecord = {
       ...user,
       status: nextStatus,
       updatedAt: new Date().toISOString()
@@ -2092,30 +2104,68 @@ export default function App() {
         showToast('Failed to Clock In.');
       }
     } else if (existingLog.clockOut === '--:--') {
-      // Clock Out
-      const now = new Date();
-      const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-      const totalHours = calculateDuration(existingLog.clockIn, timeStr);
-
-      try {
-        const { error } = await supabase
-          .from('attendance_logs')
-          .update({
-            clock_out: timeStr,
-            total_hours: totalHours
-          })
-          .eq('id', existingLog.id);
-
-        if (error) throw error;
-        showToast('Successfully clocked out.');
-        createAuditLog(currentUser.id, currentUser.username, 'Clock Out', `Clocked out at ${timeStr}. Duration: ${totalHours}`);
-        await fetchData();
-      } catch (err) {
-        console.error(err);
-        showToast('Failed to Clock Out.');
-      }
+      // Clock Out - open modal to prompt for work description
+      setClockOutWorkSummary('');
+      setIsClockOutModalOpen(true);
     } else {
       showToast('You have already clocked in and out for today.');
+    }
+  };
+
+  // Submit Work Summary & Perform Clock Out
+  const handleClockOutSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!clockOutWorkSummary.trim()) {
+      showToast('Please describe what work you have done today.');
+      return;
+    }
+    if (!currentUser || !currentUser.employeeId) return;
+
+    const empId = currentUser.employeeId;
+    const existingLog = attendanceLogs.find(log => log.employeeId === empId && log.date === todayDateString);
+    if (!existingLog) return;
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const totalHours = calculateDuration(existingLog.clockIn, timeStr);
+
+    try {
+      // 1. Clock out in attendance logs
+      const { error: clockOutError } = await supabase
+        .from('attendance_logs')
+        .update({
+          clock_out: timeStr,
+          total_hours: totalHours
+        })
+        .eq('id', existingLog.id);
+
+      if (clockOutError) throw clockOutError;
+
+      // 2. Create task representing this daily work done
+      const task: TaskRecord = {
+        id: `task-${Date.now()}`,
+        userId: currentUser.id,
+        title: `Work Done - ${todayDateString}`,
+        description: clockOutWorkSummary.trim(),
+        priority: 'Medium',
+        deadline: new Date().toISOString().slice(0, 16),
+        status: 'Completed',
+        completedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString()
+      };
+
+      await saveTask(task);
+
+      showToast('Successfully clocked out and work summary saved.');
+      createAuditLog(currentUser.id, currentUser.username, 'Clock Out', `Clocked out at ${timeStr}. Completed task details: ${clockOutWorkSummary.trim()}`);
+      
+      // Reset state and close modal
+      setIsClockOutModalOpen(false);
+      setClockOutWorkSummary('');
+      await fetchData();
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to Clock Out.');
     }
   };
 
@@ -3189,7 +3239,7 @@ export default function App() {
   const myFilteredTasks = useMemo(() => {
     if (!currentUser) return [];
 
-    return tasks.filter(t => {
+    const filtered = tasks.filter(t => {
       // Filter by assignee user
       const isMine = t.userId === currentUser.id;
 
@@ -3207,6 +3257,16 @@ export default function App() {
 
       return isMine && matchesSearch && matchesPriority && matchesTab;
     });
+
+    if (currentTab === 'CompletedTasks') {
+      return filtered.sort((a, b) => {
+        const timeA = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+        const timeB = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+        return timeB - timeA;
+      });
+    }
+
+    return filtered;
   }, [tasks, currentUser, taskSearchTerm, taskPriorityFilter, currentTab]);
 
   // Count leaves and tasks for current employee
@@ -3770,6 +3830,135 @@ export default function App() {
                                 );
                               })
                             )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Employee Completed Daily Work Summaries (Task Done) */}
+                    <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-4">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div>
+                          <h2 className="font-bold text-lg text-primary flex items-center gap-2">
+                            <CheckCircle className="w-5 h-5 text-emerald-600" />
+                            Completed Daily Work Summaries (Task Done)
+                          </h2>
+                          <p className="text-xs text-on-surface-variant font-medium">Review the daily work reports and tasks submitted by employees upon clocking out.</p>
+                        </div>
+                        
+                        {/* Filters */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant w-4 h-4" />
+                            <input
+                              type="text"
+                              placeholder="Filter by name / work..."
+                              value={adminTaskDoneSearch}
+                              onChange={(e) => setAdminTaskDoneSearch(e.target.value)}
+                              className="bg-surface-container-low border border-outline-variant rounded-full pl-9 pr-4 py-1.5 text-xs text-on-surface focus:outline-none"
+                            />
+                          </div>
+                          <input
+                            type="date"
+                            value={adminTaskDoneDate}
+                            onChange={(e) => setAdminTaskDoneDate(e.target.value)}
+                            className="bg-surface-container-low border border-outline-variant rounded-full px-3.5 py-1.5 text-xs text-on-surface focus:outline-none"
+                          />
+                          {adminTaskDoneDate && (
+                            <button
+                              onClick={() => setAdminTaskDoneDate('')}
+                              className="text-xs text-primary font-bold hover:underline cursor-pointer"
+                            >
+                              Clear Date
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="border-b border-outline-variant/40 bg-surface-container-low/20">
+                              <th className="py-2.5 px-3 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Date</th>
+                              <th className="py-2.5 px-3 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Employee</th>
+                              <th className="py-2.5 px-3 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Designation / Role</th>
+                              <th className="py-2.5 px-3 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Work Summary</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-outline-variant/20">
+                            {(() => {
+                              // Filter completed tasks
+                              const completedTasks = tasks.filter(t => t.status === 'Completed');
+                              
+                              // Filter by search term (employee name or description)
+                              const filtered = completedTasks.filter(t => {
+                                const employeeUser = users.find(u => u.id === t.userId);
+                                const empName = employeeUser ? employeeUser.fullName.toLowerCase() : '';
+                                const desc = t.description ? t.description.toLowerCase() : '';
+                                const title = t.title ? t.title.toLowerCase() : '';
+                                
+                                const matchesSearch = empName.includes(adminTaskDoneSearch.toLowerCase()) ||
+                                  desc.includes(adminTaskDoneSearch.toLowerCase()) ||
+                                  title.includes(adminTaskDoneSearch.toLowerCase());
+                                  
+                                let matchesDate = true;
+                                if (adminTaskDoneDate) {
+                                  const completedDateStr = t.completedAt ? new Date(t.completedAt).toISOString().split('T')[0] : '';
+                                  const deadlineDateStr = t.deadline ? t.deadline.split('T')[0] : '';
+                                  matchesDate = completedDateStr === adminTaskDoneDate || deadlineDateStr === adminTaskDoneDate;
+                                }
+                                
+                                return matchesSearch && matchesDate;
+                              });
+
+                              if (filtered.length === 0) {
+                                return (
+                                  <tr>
+                                    <td colSpan={4} className="py-6 text-center text-on-surface-variant/70 font-medium">
+                                      No completed work summaries found matching criteria.
+                                    </td>
+                                  </tr>
+                                );
+                              }
+
+                              // Sort by completedAt descending
+                              const sorted = filtered.sort((a, b) => {
+                                const timeA = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+                                const timeB = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+                                return timeB - timeA;
+                              });
+
+                              return sorted.map(t => {
+                                const employeeUser = users.find(u => u.id === t.userId);
+                                const emp = employees.find(e => e.id === employeeUser?.employeeId);
+                                const dateFormatted = t.completedAt ? new Date(t.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown Date';
+                                return (
+                                  <tr key={t.id} className="hover:bg-primary/5 transition-colors">
+                                    <td className="py-3 px-3 font-bold text-on-surface whitespace-nowrap">{dateFormatted}</td>
+                                    <td className="py-3 px-3">
+                                      <div className="flex items-center gap-3">
+                                        {emp?.avatarUrl ? (
+                                          <img src={emp.avatarUrl} alt={employeeUser?.fullName} className="w-7 h-7 rounded-full object-cover border border-outline-variant" />
+                                        ) : (
+                                          <div className="w-7 h-7 rounded-full border border-primary/20 bg-primary/5 flex items-center justify-center text-primary font-bold">
+                                            {employeeUser?.fullName?.charAt(0)}
+                                          </div>
+                                        )}
+                                        <div>
+                                          <p className="font-bold text-primary">{employeeUser?.fullName || 'Unknown Employee'}</p>
+                                          <p className="text-[10px] text-on-surface-variant font-medium">@{employeeUser?.username}</p>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="py-3 px-3 text-on-surface-variant font-semibold">{employeeUser?.designation || employeeUser?.role}</td>
+                                    <td className="py-3 px-3 max-w-md">
+                                      <p className="font-bold text-primary text-[11px] mb-0.5">{t.title}</p>
+                                      <p className="text-on-surface text-xs leading-relaxed whitespace-pre-line font-medium">{t.description}</p>
+                                    </td>
+                                  </tr>
+                                );
+                              });
+                            })()}
                           </tbody>
                         </table>
                       </div>
@@ -5855,6 +6044,146 @@ export default function App() {
                         </table>
                       </div>
                     </div>
+
+                    {/* Intern Completed Work Summaries (Task Done) */}
+                    <div className="bg-white p-6 rounded-2xl border border-outline-variant/60 shadow-sm space-y-4">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div>
+                          <h2 className="font-bold text-lg text-emerald-700 flex items-center gap-2">
+                            <CheckCircle className="w-5 h-5 text-emerald-600" />
+                            Intern Completed Work Summaries (Task Done)
+                          </h2>
+                          <p className="text-xs text-on-surface-variant font-medium">Review the daily work reports and tasks submitted by your assigned interns upon clocking out.</p>
+                        </div>
+                        
+                        {/* Filters */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant w-4 h-4" />
+                            <input
+                              type="text"
+                              placeholder="Filter by name / work..."
+                              value={tlTaskDoneSearch}
+                              onChange={(e) => setTlTaskDoneSearch(e.target.value)}
+                              className="bg-surface-container-low border border-outline-variant rounded-full pl-9 pr-4 py-1.5 text-xs text-on-surface focus:outline-none"
+                            />
+                          </div>
+                          <input
+                            type="date"
+                            value={tlTaskDoneDate}
+                            onChange={(e) => setTlTaskDoneDate(e.target.value)}
+                            className="bg-surface-container-low border border-outline-variant rounded-full px-3.5 py-1.5 text-xs text-on-surface focus:outline-none"
+                          />
+                          {tlTaskDoneDate && (
+                            <button
+                              onClick={() => setTlTaskDoneDate('')}
+                              className="text-xs text-primary font-bold hover:underline cursor-pointer"
+                            >
+                              Clear Date
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="border-b border-outline-variant/40 bg-surface-container-low/20">
+                              <th className="py-2.5 px-3 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Date</th>
+                              <th className="py-2.5 px-3 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Intern Name</th>
+                              <th className="py-2.5 px-3 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Intern Type</th>
+                              <th className="py-2.5 px-3 font-bold text-xs text-on-surface-variant uppercase tracking-wider">Work Summary</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-outline-variant/20">
+                            {(() => {
+                              // Filter interns managed by this TL
+                              const myInternIds = users.filter(u => u.managerId === currentUser.id).map(u => u.id);
+                              
+                              // Filter completed tasks by my interns
+                              const completedTasks = tasks.filter(t => myInternIds.includes(t.userId) && t.status === 'Completed');
+                              
+                              // Filter by search term (employee name or description)
+                              const filtered = completedTasks.filter(t => {
+                                const employeeUser = users.find(u => u.id === t.userId);
+                                const empName = employeeUser ? employeeUser.fullName.toLowerCase() : '';
+                                const desc = t.description ? t.description.toLowerCase() : '';
+                                const title = t.title ? t.title.toLowerCase() : '';
+                                
+                                const matchesSearch = empName.includes(tlTaskDoneSearch.toLowerCase()) ||
+                                  desc.includes(tlTaskDoneSearch.toLowerCase()) ||
+                                  title.includes(tlTaskDoneSearch.toLowerCase());
+                                  
+                                let matchesDate = true;
+                                if (tlTaskDoneDate) {
+                                  const completedDateStr = t.completedAt ? new Date(t.completedAt).toISOString().split('T')[0] : '';
+                                  const deadlineDateStr = t.deadline ? t.deadline.split('T')[0] : '';
+                                  matchesDate = completedDateStr === tlTaskDoneDate || deadlineDateStr === tlTaskDoneDate;
+                                }
+                                
+                                return matchesSearch && matchesDate;
+                              });
+
+                              if (filtered.length === 0) {
+                                return (
+                                  <tr>
+                                    <td colSpan={4} className="py-6 text-center text-on-surface-variant/70 font-medium">
+                                      No completed work summaries found for your assigned interns.
+                                    </td>
+                                  </tr>
+                                );
+                              }
+
+                              // Sort by completedAt descending
+                              const sorted = filtered.sort((a, b) => {
+                                const timeA = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+                                const timeB = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+                                return timeB - timeA;
+                              });
+
+                              return sorted.map(t => {
+                                const intern = users.find(u => u.id === t.userId);
+                                const emp = employees.find(e => e.id === intern?.employeeId);
+                                const dateFormatted = t.completedAt ? new Date(t.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown Date';
+                                return (
+                                  <tr key={t.id} className="hover:bg-primary/5 transition-colors">
+                                    <td className="py-3 px-3 font-bold text-on-surface whitespace-nowrap">{dateFormatted}</td>
+                                    <td className="py-3 px-3">
+                                      <div className="flex items-center gap-3">
+                                        {emp?.avatarUrl ? (
+                                          <img src={emp.avatarUrl} alt={intern?.fullName} className="w-7 h-7 rounded-full object-cover border border-outline-variant" />
+                                        ) : (
+                                          <div className="w-7 h-7 rounded-full border border-primary/20 bg-primary/5 flex items-center justify-center text-primary font-bold">
+                                            {intern?.fullName?.charAt(0)}
+                                          </div>
+                                        )}
+                                        <div>
+                                          <p className="font-bold text-primary">{intern?.fullName || 'Unknown Intern'}</p>
+                                          <p className="text-[10px] text-on-surface-variant font-medium">@{intern?.username}</p>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="py-3 px-3">
+                                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                        intern?.internType === 'Online Intern'
+                                          ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                          : 'bg-orange-50 text-orange-700 border-orange-200'
+                                      }`}>
+                                        {intern?.internType || 'Online Intern'}
+                                      </span>
+                                    </td>
+                                    <td className="py-3 px-3 max-w-md font-medium text-on-surface-variant">
+                                      <p className="font-bold text-primary text-[11px] mb-0.5">{t.title}</p>
+                                      <p className="text-on-surface text-xs leading-relaxed whitespace-pre-line">{t.description}</p>
+                                    </td>
+                                  </tr>
+                                );
+                              });
+                            })()}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -7039,6 +7368,58 @@ export default function App() {
                   }`}
                 >
                   Apply Decision
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Clock Out Work Summary Modal */}
+      {isClockOutModalOpen && (
+        <div className="fixed inset-0 z-[99] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-2xl p-6 border border-outline-variant max-w-md w-full shadow-2xl space-y-4 animate-scale-up">
+            <div className="flex justify-between items-center border-b border-outline-variant/20 pb-3">
+              <h3 className="font-bold text-primary flex items-center gap-2 text-base">
+                <Clock className="w-5 h-5 text-amber-500" />
+                Clock Out Work Summary
+              </h3>
+              <button onClick={() => setIsClockOutModalOpen(false)} className="p-1 hover:bg-surface-container rounded-full cursor-pointer transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleClockOutSubmit} className="space-y-4 text-xs font-medium">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-amber-800 text-[11px] leading-relaxed">
+                <strong>Almost done!</strong> Before clocking out, please enter a summary of the tasks and work you completed today. This will be recorded as a completed task under your profile and will be reflected on the Team Leader and Admin dashboards.
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">What have you done today? *</label>
+                <textarea
+                  required
+                  placeholder="Describe your achievements and tasks completed today in detail..."
+                  value={clockOutWorkSummary}
+                  onChange={(e) => setClockOutWorkSummary(e.target.value)}
+                  rows={4}
+                  className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2.5 text-xs text-on-surface focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-outline-variant/20">
+                <button
+                  type="button"
+                  onClick={() => setIsClockOutModalOpen(false)}
+                  className="px-4 py-2 hover:bg-slate-100 rounded-lg text-on-surface-variant font-bold cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="bg-amber-500 hover:bg-amber-600 text-white px-6 py-2 rounded-lg font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <CheckSquare className="w-4 h-4" />
+                  Submit & Clock Out
                 </button>
               </div>
             </form>

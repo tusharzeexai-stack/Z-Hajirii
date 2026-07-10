@@ -13,6 +13,7 @@ import {
   Download,
   Check,
   X,
+  FileBarChart,
   Clock,
   Briefcase,
   AlertCircle,
@@ -3288,6 +3289,40 @@ export default function App() {
     };
   }, [tasks, leaveRequests, currentUser]);
 
+  // Count attendance stats for current employee/intern
+  const employeeAttendanceStats = useMemo(() => {
+    if (!currentUser || !currentUser.employeeId) {
+      return {
+        present: 0,
+        absent: 0,
+        late: 0,
+        total: 0,
+        rate: '100.0%'
+      };
+    }
+    const logs = attendanceLogs.filter(log => log.employeeId === currentUser.employeeId);
+    const total = logs.length;
+    let present = 0;
+    let absent = 0;
+    let late = 0;
+
+    logs.forEach(log => {
+      if (log.status === 'Present') present += 1;
+      else if (log.status === 'Absent') absent += 1;
+      else if (log.status === 'Late') late += 1;
+    });
+
+    const rate = total > 0 ? ((present + late) / total * 100).toFixed(1) + '%' : '100.0%';
+
+    return {
+      present,
+      absent,
+      late,
+      total,
+      rate
+    };
+  }, [attendanceLogs, currentUser]);
+
   // Current date/time display for employee dashboard
   const [currentDateTime, setCurrentDateTime] = useState<string>(new Date().toLocaleString());
   useEffect(() => {
@@ -5100,14 +5135,19 @@ export default function App() {
                     </section>
 
                     {/* Summary Bento Stats */}
-                    <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <section className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                       <div className="bg-white border border-outline-variant rounded-2xl p-6 flex items-center gap-4 shadow-sm">
                         <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
                           <Check className="w-6 h-6" />
                         </div>
                         <div>
                           <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Present Days</p>
-                          <p className="text-2xl font-bold">{profileStats.present + profileStats.late}</p>
+                          <p className="text-2xl font-bold text-emerald-700">{profileStats.present + profileStats.late}</p>
+                          {profileStats.late > 0 && (
+                            <p className="text-[10px] text-amber-600 font-bold mt-1">
+                              (including {profileStats.late} late days)
+                            </p>
+                          )}
                         </div>
                       </div>
 
@@ -5117,17 +5157,7 @@ export default function App() {
                         </div>
                         <div>
                           <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Absent Days</p>
-                          <p className="text-2xl font-bold">{profileStats.absent}</p>
-                        </div>
-                      </div>
-
-                      <div className="bg-white border border-outline-variant rounded-2xl p-6 flex items-center gap-4 shadow-sm">
-                        <div className="p-3 bg-amber-50 text-amber-600 rounded-lg">
-                          <Clock className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Late Days</p>
-                          <p className="text-2xl font-bold">{profileStats.late}</p>
+                          <p className="text-2xl font-bold text-error">{profileStats.absent}</p>
                         </div>
                       </div>
 
@@ -5804,6 +5834,69 @@ export default function App() {
                             </button>
                           );
                         })()}
+                      </div>
+                    </div>
+
+                    {/* Attendance Analytics Metrics */}
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">My Attendance Analytics</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="bg-white p-5 rounded-xl border border-outline-variant/60 shadow-sm flex items-center gap-4">
+                          <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-lg">
+                            <Check className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Present Days</p>
+                            <p className="text-2xl font-extrabold text-emerald-700 mt-0.5">
+                              {employeeAttendanceStats.present + employeeAttendanceStats.late}
+                            </p>
+                            {employeeAttendanceStats.late > 0 && (
+                              <p className="text-[10px] text-amber-600 font-bold mt-0.5">
+                                (including {employeeAttendanceStats.late} late days)
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="bg-white p-5 rounded-xl border border-outline-variant/60 shadow-sm flex items-center gap-4">
+                          <div className="p-2.5 bg-red-50 text-error rounded-lg">
+                            <X className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Absent Days</p>
+                            <p className="text-2xl font-extrabold text-error mt-0.5">{employeeAttendanceStats.absent}</p>
+                          </div>
+                        </div>
+
+                        <div className="bg-white p-5 rounded-xl border border-outline-variant/60 shadow-sm flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-4">
+                            <div className="p-2.5 bg-blue-50 text-primary rounded-lg">
+                              <FileBarChart className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Attendance Rate</p>
+                              <p className="text-2xl font-extrabold text-primary mt-0.5">{employeeAttendanceStats.rate}</p>
+                            </div>
+                          </div>
+                          <div className="relative h-10 w-10 shrink-0">
+                            <svg className="h-full w-full" viewBox="0 0 36 36">
+                              <path
+                                className="text-slate-100 stroke-current"
+                                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                fill="none"
+                                strokeWidth="3.5"
+                              ></path>
+                              <path
+                                className="text-primary stroke-current"
+                                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                fill="none"
+                                strokeDasharray={`${parseFloat(employeeAttendanceStats.rate)}, 100`}
+                                strokeLinecap="round"
+                                strokeWidth="3.5"
+                              ></path>
+                            </svg>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
@@ -6759,29 +6852,25 @@ export default function App() {
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-2">
-                        <div className="bg-surface-container-low/30 p-4 rounded-xl border border-outline-variant/40">
-                          <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Attendance Rate</p>
-                          <p className="text-2xl font-extrabold text-primary mt-1">{profileStats.rate}</p>
-                          <p className="text-[10px] text-on-surface-variant/80 font-medium">Calculated from {profileStats.total} logs</p>
-                        </div>
-
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
                         <div className="bg-surface-container-low/30 p-4 rounded-xl border border-outline-variant/40">
                           <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Present Count</p>
                           <p className="text-2xl font-extrabold text-emerald-600 mt-1">{profileStats.present + profileStats.late}</p>
-                          <p className="text-[10px] text-on-surface-variant/80 font-medium">On-time days</p>
-                        </div>
-
-                        <div className="bg-surface-container-low/30 p-4 rounded-xl border border-outline-variant/40">
-                          <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Late Arrivals</p>
-                          <p className="text-2xl font-extrabold text-amber-500 mt-1">{profileStats.late}</p>
-                          <p className="text-[10px] text-on-surface-variant/80 font-medium">Check-ins after 12:00 PM</p>
+                          <p className="text-[10px] text-on-surface-variant/80 font-semibold mt-1 text-amber-600">
+                            On-time days {profileStats.late > 0 && `(including ${profileStats.late} late)`}
+                          </p>
                         </div>
 
                         <div className="bg-surface-container-low/30 p-4 rounded-xl border border-outline-variant/40">
                           <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Absent Days</p>
                           <p className="text-2xl font-extrabold text-error mt-1">{profileStats.absent}</p>
-                          <p className="text-[10px] text-on-surface-variant/80 font-medium">Unexcused inactive days</p>
+                          <p className="text-[10px] text-on-surface-variant/80 font-medium mt-1">Unexcused inactive days</p>
+                        </div>
+
+                        <div className="bg-surface-container-low/30 p-4 rounded-xl border border-outline-variant/40">
+                          <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Attendance Rate</p>
+                          <p className="text-2xl font-extrabold text-primary mt-1">{profileStats.rate}</p>
+                          <p className="text-[10px] text-on-surface-variant/80 font-medium mt-1">Calculated from {profileStats.total} logs</p>
                         </div>
                       </div>
 

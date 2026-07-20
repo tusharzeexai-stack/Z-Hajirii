@@ -1,0 +1,10 @@
+{
+  "name": "zhajirii-lambda",
+  "version": "1.0.0",
+  "description": "Lambda handlers for Z-Hajirii Attendance System",
+  "main": "db.js",
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.600.0",
+    "pg": "^8.13.3"
+  }
+}

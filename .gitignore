@@ -6,3 +6,5 @@ coverage/
 *.log
 .env*
 !.env.example
+aws/lambda/node_modules/
+aws/lambda.zip

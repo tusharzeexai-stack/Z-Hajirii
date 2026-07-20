@@ -55,7 +55,7 @@ import {
 import { INITIAL_EMPLOYEES, INITIAL_ATTENDANCE_LOGS } from './data';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
-import { supabase } from './supabaseClient';
+import { supabase } from './awsApiClient';
 
 // @ts-ignore
 import logoUrl from '@/assets/Zeex-AI logo .png';

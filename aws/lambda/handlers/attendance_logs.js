@@ -26,18 +26,38 @@ exports.handler = async (event) => {
         return respond(200, { deleted: true });
       }
 
-      const { id, employee_id, date, clock_in, clock_out, total_hours, status } = body;
+      if (action === 'update' || body.eq_col) {
+        const targetId = body.id || (body.eq_col === 'id' ? body.eq_val : null);
+        const fields = [];
+        const values = [];
+        let idx = 1;
 
-      if (action === 'update') {
-        await pool.query(
-          `UPDATE attendance_logs SET clock_in=$1, clock_out=$2, total_hours=$3, status=$4
-           WHERE employee_id=$5 AND date=$6`,
-          [clock_in, clock_out, total_hours, status, employee_id, date]
-        );
-        return respond(200, { success: true });
+        if (body.clock_in !== undefined) { fields.push(`clock_in = $${idx++}`); values.push(body.clock_in); }
+        if (body.clock_out !== undefined) { fields.push(`clock_out = $${idx++}`); values.push(body.clock_out); }
+        if (body.total_hours !== undefined) { fields.push(`total_hours = $${idx++}`); values.push(body.total_hours); }
+        if (body.status !== undefined) { fields.push(`status = $${idx++}`); values.push(body.status); }
+
+        if (fields.length > 0 && targetId) {
+          values.push(targetId);
+          await pool.query(
+            `UPDATE attendance_logs SET ${fields.join(', ')} WHERE id = $${idx}`,
+            values
+          );
+          return respond(200, { success: true });
+        }
+
+        if (fields.length > 0 && body.employee_id && body.date) {
+          values.push(body.employee_id, body.date);
+          await pool.query(
+            `UPDATE attendance_logs SET ${fields.join(', ')} WHERE employee_id = $${idx++} AND date = $${idx}`,
+            values
+          );
+          return respond(200, { success: true });
+        }
       }
 
-      // Insert
+      // Default Insert / Upsert by ID
+      const { id, employee_id, date, clock_in, clock_out, total_hours, status } = body;
       await pool.query(
         `INSERT INTO attendance_logs (id, employee_id, date, clock_in, clock_out, total_hours, status)
          VALUES ($1,$2,$3,$4,$5,$6,$7)

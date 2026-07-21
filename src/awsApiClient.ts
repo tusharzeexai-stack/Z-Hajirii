@@ -175,7 +175,7 @@ class QueryBuilder {
       // Attendance: update by employee_id + date (handled by upsert path)
       return apiFetch(`/${table}?action=update`, {
         method: 'POST',
-        body: JSON.stringify({ ...this._body, eq_col: this._eqCol, eq_val: this._eqVal }),
+        body: JSON.stringify({ ...this._body, eq_col: this._eqCol, eq_val: this._eqVal, id: this._eqCol === 'id' ? this._eqVal : undefined }),
       });
     }
 

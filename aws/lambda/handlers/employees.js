@@ -29,6 +29,31 @@ exports.handler = async (event) => {
         return respond(200, { deleted: true });
       }
 
+      // Partial update
+      if (action === 'update' || body.eq_col) {
+        const targetId = body.id || (body.eq_col === 'id' ? body.eq_val : null);
+        const fields = [];
+        const values = [];
+        let idx = 1;
+
+        if (body.name !== undefined) { fields.push(`name = $${idx++}`); values.push(body.name); }
+        if (body.role !== undefined) { fields.push(`role = $${idx++}`); values.push(body.role); }
+        if (body.email !== undefined) { fields.push(`email = $${idx++}`); values.push(body.email); }
+        if (body.avatar_url !== undefined) { fields.push(`avatar_url = $${idx++}`); values.push(body.avatar_url); }
+        if (body.emp_id !== undefined) { fields.push(`emp_id = $${idx++}`); values.push(body.emp_id); }
+        if (body.active_now !== undefined) { fields.push(`active_now = $${idx++}`); values.push(body.active_now); }
+
+        if (fields.length > 0 && targetId) {
+          values.push(targetId);
+          await pool.query(
+            `UPDATE employees SET ${fields.join(', ')} WHERE id = $${idx}`,
+            values
+          );
+          return respond(200, { success: true });
+        }
+      }
+
+      // Default Insert/Upsert
       const { id, name, role, email, avatar_url, emp_id, active_now } = body;
       await pool.query(
         `INSERT INTO employees (id, name, role, email, avatar_url, emp_id, active_now)

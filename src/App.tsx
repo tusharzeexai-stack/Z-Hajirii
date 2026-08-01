@@ -108,16 +108,20 @@ const calculateDuration = (inTime: string, outTime: string) => {
       if (modifier === 'AM' && hours === 12) hours = 0;
       return hours * 60 + minutes;
     };
-    const diff = parseTime(outTime) - parseTime(inTime);
+    let diff = parseTime(outTime) - parseTime(inTime);
+    if (diff < 0) {
+      diff += 24 * 60;
+    }
     if (diff <= 0) return '0h 00m';
     const h = Math.floor(diff / 60);
     const m = diff % 60;
-    return `${h}h ${m}m`;
+    return `${h}h ${m.toString().padStart(2, '0')}m`;
   } catch (err) {
     console.error(err);
     return '0h 00m';
   }
 };
+
 
 // Helper to extract break minutes from serialized total hours
 const getBreakMinutes = (totalHoursStr: string): number => {

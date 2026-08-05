@@ -11,6 +11,11 @@
  *   db.from('table').delete().in('col', [vals])
  *
  * All methods return { data, error } to match Supabase SDK behavior.
+ *
+ * Security:
+ *  - Attaches Authorization: Bearer <jwt> header on every request.
+ *  - Token is read from sessionStorage (cleared on tab/window close).
+ *  - No sensitive data is cached in localStorage.
  */
 
 const API_BASE = (import.meta as any).env.VITE_API_GATEWAY_URL as string;
@@ -22,6 +27,22 @@ if (!API_BASE) {
   );
 }
 
+// ── Token Management ────────────────────────────────────────────────────────
+
+const TOKEN_KEY = 'zhajirii_token';
+
+export function setAuthToken(token: string): void {
+  sessionStorage.setItem(TOKEN_KEY, token);
+}
+
+export function getAuthToken(): string | null {
+  return sessionStorage.getItem(TOKEN_KEY);
+}
+
+export function clearAuthToken(): void {
+  sessionStorage.removeItem(TOKEN_KEY);
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 async function apiFetch(
@@ -29,14 +50,35 @@ async function apiFetch(
   options: RequestInit = {}
 ): Promise<{ data: any; error: any }> {
   try {
+    const token = getAuthToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const res = await fetch(`${API_BASE}${path}`, {
-      headers: { 'Content-Type': 'application/json' },
       ...options,
+      headers: {
+        ...headers,
+        ...(options.headers as Record<string, string> || {}),
+      },
     });
+
     const json = await res.json();
+
+    if (res.status === 401) {
+      // Token expired or invalid — clear it
+      clearAuthToken();
+      return { data: null, error: { message: 'Session expired. Please log in again.', code: 401 } };
+    }
+
     if (!res.ok) {
       return { data: null, error: { message: json.error || `HTTP ${res.status}` } };
     }
+
     return { data: json, error: null };
   } catch (err: any) {
     return { data: null, error: { message: err.message || 'Network error' } };
@@ -212,6 +254,55 @@ class QueryBuilder {
     }
 
     return { data: null, error: { message: 'Unknown operation' } };
+  }
+}
+
+// ── Auth API ───────────────────────────────────────────────────────────────
+
+/**
+ * Calls POST /auth/login and returns { token, user } or throws an error string.
+ * Password verification happens entirely on the server — no hashes cross the wire.
+ */
+export async function loginWithCredentials(
+  username: string,
+  password: string
+): Promise<{ token: string; user: any }> {
+  const res = await fetch(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+
+  const json = await res.json();
+
+  if (!res.ok) {
+    throw new Error(json.error || 'Login failed.');
+  }
+
+  return json as { token: string; user: any };
+}
+
+/**
+ * Calls POST /auth/change-password to update password server-side.
+ * The old password is verified and the new hash computed entirely on the server.
+ */
+export async function changePassword(
+  oldPassword: string,
+  newPassword: string
+): Promise<void> {
+  const token = getAuthToken();
+  const res = await fetch(`${API_BASE}/auth/change-password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+  });
+
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || 'Failed to change password.');
   }
 }
 

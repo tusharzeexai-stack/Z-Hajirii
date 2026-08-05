@@ -19,6 +19,11 @@ Parameters:
   DBInstanceClass:
     Type: String
     Default: db.t3.micro
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+    Description: "Secret key for signing JWT tokens (min 32 chars, keep private)"
 
 Resources:
 
@@ -178,6 +183,7 @@ Resources:
           DB_NAME: !Ref DBName
           DB_USER: !Ref DBUsername
           DB_PASS: !Ref DBPassword
+          JWT_SECRET: !Ref JwtSecret
       Code:
         ZipFile: "exports.handler=async()=>({statusCode:200,body:'{}'})"
 
@@ -201,6 +207,7 @@ Resources:
           DB_NAME: !Ref DBName
           DB_USER: !Ref DBUsername
           DB_PASS: !Ref DBPassword
+          JWT_SECRET: !Ref JwtSecret
       Code:
         ZipFile: "exports.handler=async()=>({statusCode:200,body:'{}'})"
 
@@ -339,6 +346,7 @@ Resources:
           DB_NAME: !Ref DBName
           DB_USER: !Ref DBUsername
           DB_PASS: !Ref DBPassword
+          JWT_SECRET: !Ref JwtSecret
       Code:
         ZipFile: "exports.handler=async()=>({statusCode:200,body:'{}'})"
 
@@ -390,10 +398,69 @@ Resources:
   MChat: { Type: AWS::ApiGateway::Method, Properties: { RestApiId: !Ref Api, ResourceId: !Ref RChat, HttpMethod: ANY, AuthorizationType: NONE, Integration: { Type: AWS_PROXY, IntegrationHttpMethod: POST, Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnChat.Arn}/invocations" } } }
   PChat: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref FnChat, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/*" } }
 
+  # ── Auth Lambdas (login + change-password) ────────────────────────────────
+  FnAuth:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AppName}-auth-login"
+      Runtime: nodejs20.x
+      Handler: handlers/auth.handler
+      Role: !GetAtt LambdaRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      VpcConfig:
+        SecurityGroupIds: [!Ref LambdaSG]
+        SubnetIds: [!Ref PublicSubnet1, !Ref PublicSubnet2]
+      Environment:
+        Variables:
+          DB_SECRET_ARN: !Ref DBSecret
+          DB_HOST: !GetAtt RDS.Endpoint.Address
+          DB_PORT: "5432"
+          DB_NAME: !Ref DBName
+          DB_USER: !Ref DBUsername
+          DB_PASS: !Ref DBPassword
+          JWT_SECRET: !Ref JwtSecret
+      Code:
+        ZipFile: "exports.handler=async()=>({statusCode:200,body:'{}'})"
+
+  FnChangePassword:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AppName}-auth-change-password"
+      Runtime: nodejs20.x
+      Handler: handlers/change_password.handler
+      Role: !GetAtt LambdaRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      VpcConfig:
+        SecurityGroupIds: [!Ref LambdaSG]
+        SubnetIds: [!Ref PublicSubnet1, !Ref PublicSubnet2]
+      Environment:
+        Variables:
+          DB_SECRET_ARN: !Ref DBSecret
+          DB_HOST: !GetAtt RDS.Endpoint.Address
+          DB_PORT: "5432"
+          DB_NAME: !Ref DBName
+          DB_USER: !Ref DBUsername
+          DB_PASS: !Ref DBPassword
+          JWT_SECRET: !Ref JwtSecret
+      Code:
+        ZipFile: "exports.handler=async()=>({statusCode:200,body:'{}'})"
+
+  # /auth/login and /auth/change-password
+  RAuth: { Type: AWS::ApiGateway::Resource, Properties: { RestApiId: !Ref Api, ParentId: !GetAtt Api.RootResourceId, PathPart: auth } }
+  RAuthLogin: { Type: AWS::ApiGateway::Resource, Properties: { RestApiId: !Ref Api, ParentId: !Ref RAuth, PathPart: login } }
+  MAuthLogin: { Type: AWS::ApiGateway::Method, Properties: { RestApiId: !Ref Api, ResourceId: !Ref RAuthLogin, HttpMethod: ANY, AuthorizationType: NONE, Integration: { Type: AWS_PROXY, IntegrationHttpMethod: POST, Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnAuth.Arn}/invocations" } } }
+  PAuthLogin: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref FnAuth, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/*" } }
+
+  RAuthChangePass: { Type: AWS::ApiGateway::Resource, Properties: { RestApiId: !Ref Api, ParentId: !Ref RAuth, PathPart: change-password } }
+  MAuthChangePass: { Type: AWS::ApiGateway::Method, Properties: { RestApiId: !Ref Api, ResourceId: !Ref RAuthChangePass, HttpMethod: ANY, AuthorizationType: NONE, Integration: { Type: AWS_PROXY, IntegrationHttpMethod: POST, Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnChangePassword.Arn}/invocations" } } }
+  PAuthChangePass: { Type: AWS::Lambda::Permission, Properties: { FunctionName: !Ref FnChangePassword, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/*" } }
+
   # Deployment & Stage
   ApiDeploy:
     Type: AWS::ApiGateway::Deployment
-    DependsOn: [MUsers, MEmployees, MAttendance, MTasks, MLeaves, MNotifs, MAudit, MChat]
+    DependsOn: [MUsers, MEmployees, MAttendance, MTasks, MLeaves, MNotifs, MAudit, MChat, MAuthLogin, MAuthChangePass]
     Properties:
       RestApiId: !Ref Api
 

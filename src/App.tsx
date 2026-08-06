@@ -3330,10 +3330,11 @@ export default function App() {
                       name="username"
                       type="text"
                       required
+                      aria-label="Username"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       placeholder="Enter username"
-                      className="block w-full pl-10 pr-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-sm text-on-surface focus:ring-2 focus:ring-primary-container focus:border-primary outline-none transition-all duration-200"
+                      className="block w-full pl-10 pr-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-sm text-on-surface placeholder:text-on-surface-variant focus:ring-2 focus:ring-primary-container focus:border-primary outline-none transition-all duration-200"
                     />
                   </div>
                 </div>
@@ -3351,10 +3352,11 @@ export default function App() {
                       name="password"
                       type={showPassword ? 'text' : 'password'}
                       required
+                      aria-label="Password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="block w-full pl-10 pr-12 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-sm text-on-surface focus:ring-2 focus:ring-primary-container focus:border-primary outline-none transition-all duration-200"
+                      className="block w-full pl-10 pr-12 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-sm text-on-surface placeholder:text-on-surface-variant focus:ring-2 focus:ring-primary-container focus:border-primary outline-none transition-all duration-200"
                     />
                     <button
                       className="absolute inset-y-0 right-0 pr-3 flex items-center text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
@@ -3371,6 +3373,7 @@ export default function App() {
                   <input
                     id="remember"
                     type="checkbox"
+                    aria-label="Remember this device"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
                     className="w-4 h-4 text-primary bg-surface-container border-outline-variant rounded focus:ring-primary focus:ring-offset-0"

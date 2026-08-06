@@ -3617,6 +3617,7 @@ export default function App() {
                         <div className="flex flex-wrap items-center gap-2">
                           <input
                             type="date"
+                            aria-label="Presence review date"
                             value={dashboardDate.includes(',') ? new Date().toISOString().split('T')[0] : new Date(dashboardDate).toISOString().split('T')[0]}
                             onChange={(e) => {
                               const parsed = new Date(e.target.value);
@@ -3624,7 +3625,7 @@ export default function App() {
                                 setDashboardDate(formatDateString(parsed));
                               }
                             }}
-                            className="bg-surface-container-low border border-outline-variant rounded-full px-3.5 py-1.5 text-xs text-on-surface focus:outline-none"
+                            className="bg-surface-container-low border border-slate-500 rounded-full px-3.5 py-1.5 text-xs text-on-surface focus:outline-none"
                           />
                         </div>
                       </div>
@@ -3869,17 +3870,19 @@ export default function App() {
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant w-4 h-4" />
                             <input
                               type="text"
+                              aria-label="Filter tasks by name or work"
                               placeholder="Filter by name / work..."
                               value={adminTaskDoneSearch}
                               onChange={(e) => setAdminTaskDoneSearch(e.target.value)}
-                              className="bg-surface-container-low border border-outline-variant rounded-full pl-9 pr-4 py-1.5 text-xs text-on-surface focus:outline-none"
+                              className="bg-surface-container-low border border-slate-500 rounded-full pl-9 pr-4 py-1.5 text-xs text-on-surface placeholder:text-on-surface-variant focus:outline-none"
                             />
                           </div>
                           <input
                             type="date"
+                            aria-label="Filter tasks by date"
                             value={adminTaskDoneDate}
                             onChange={(e) => setAdminTaskDoneDate(e.target.value)}
-                            className="bg-surface-container-low border border-outline-variant rounded-full px-3.5 py-1.5 text-xs text-on-surface focus:outline-none"
+                            className="bg-surface-container-low border border-slate-500 rounded-full px-3.5 py-1.5 text-xs text-on-surface focus:outline-none"
                           />
                           {adminTaskDoneDate && (
                             <button

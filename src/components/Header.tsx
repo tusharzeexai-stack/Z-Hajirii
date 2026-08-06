@@ -61,7 +61,7 @@ export default function Header({
             type="text"
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full bg-surface-container-low border border-outline-variant rounded-full py-2 pl-10 pr-4 font-normal text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            className="w-full bg-surface-container-low border border-slate-500 rounded-full py-2 pl-10 pr-4 font-normal text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-on-surface-variant"
             placeholder={placeholder}
             aria-label="Search"
           />

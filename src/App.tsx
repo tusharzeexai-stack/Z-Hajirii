@@ -3360,6 +3360,7 @@ export default function App() {
                       className="absolute inset-y-0 right-0 pr-3 flex items-center text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
                       {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                     </button>
@@ -3448,7 +3449,7 @@ export default function App() {
               <div className="fixed inset-y-0 left-0 w-64 z-50 bg-surface-container-lowest border-r border-outline-variant flex flex-col animate-slide-right lg:hidden">
                 <div className="p-6 border-b border-outline-variant/30 flex justify-between items-center">
                   <span className="font-bold text-primary">Z-Hajirii Navigation</span>
-                  <button onClick={() => setMobileMenuOpen(false)} className="p-1 hover:bg-surface-container-low rounded-full">
+                  <button onClick={() => setMobileMenuOpen(false)} className="p-1 hover:bg-surface-container-low rounded-full" aria-label="Close mobile menu">
                     <X className="w-5 h-5 text-on-surface" />
                   </button>
                 </div>

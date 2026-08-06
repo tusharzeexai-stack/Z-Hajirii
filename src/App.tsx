@@ -1473,6 +1473,7 @@ export default function App() {
       'zhajirii_users', 'zhajirii_employees', 'zhajirii_logs',
       'zhajirii_tasks', 'zhajirii_leaves', 'zhajirii_notifications',
       'zhajirii_audit_logs', 'zhajirii_chat_messages',
+      'zhajirii_session', 'zhajirii_token',
     ].forEach(key => localStorage.removeItem(key));
 
     // Restore session from sessionStorage (safe minimal object, no hash)

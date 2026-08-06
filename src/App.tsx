@@ -3306,7 +3306,7 @@ export default function App() {
                   <img src={logoUrl} alt="Zeex-AI Logo" className="h-16 w-auto object-contain" />
                 </div>
                 <h1 className="font-bold text-2xl text-primary tracking-tight mb-1 text-center">Z-Hajirii Login</h1>
-                <p className="text-sm text-on-surface-variant font-medium text-center animate-pulse">Smart HR & Attendance by ZEEXAI</p>
+                <p className="text-sm text-on-surface font-semibold text-center animate-pulse">Smart HR & Attendance by ZEEXAI</p>
               </div>
 
               <form onSubmit={handleLogin} className="space-y-4">
@@ -3318,12 +3318,12 @@ export default function App() {
                 )}
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider" htmlFor="username">
+                  <label className="text-xs font-bold text-on-surface uppercase tracking-wider" htmlFor="username">
                     Username
                   </label>
                   <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <User className="w-5 h-5 text-on-surface-variant" />
+                      <User className="w-5 h-5 text-on-surface" />
                     </div>
                     <input
                       id="username"
@@ -3334,18 +3334,18 @@ export default function App() {
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       placeholder="Enter username"
-                      className="block w-full pl-10 pr-4 py-3 bg-surface-container-lowest border border-slate-500 rounded-lg text-sm text-on-surface placeholder:text-on-surface-variant focus:ring-2 focus:ring-primary-container focus:border-primary outline-none transition-all duration-200"
+                      className="block w-full pl-10 pr-4 py-3 bg-surface-container-lowest border border-slate-500 rounded-lg text-sm text-on-surface placeholder:text-on-surface placeholder:opacity-100 focus:ring-2 focus:ring-primary-container focus:border-primary outline-none transition-all duration-200"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider" htmlFor="password">
+                  <label className="text-xs font-bold text-on-surface uppercase tracking-wider" htmlFor="password">
                     Password
                   </label>
                   <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Lock className="w-5 h-5 text-on-surface-variant" />
+                      <Lock className="w-5 h-5 text-on-surface" />
                     </div>
                     <input
                       id="password"
@@ -3356,10 +3356,10 @@ export default function App() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="block w-full pl-10 pr-12 py-3 bg-surface-container-lowest border border-slate-500 rounded-lg text-sm text-on-surface placeholder:text-on-surface-variant focus:ring-2 focus:ring-primary-container focus:border-primary outline-none transition-all duration-200"
+                      className="block w-full pl-10 pr-12 py-3 bg-surface-container-lowest border border-slate-500 rounded-lg text-sm text-on-surface placeholder:text-on-surface placeholder:opacity-100 focus:ring-2 focus:ring-primary-container focus:border-primary outline-none transition-all duration-200"
                     />
                     <button
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-on-surface hover:text-primary transition-colors cursor-pointer"
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
@@ -3376,9 +3376,9 @@ export default function App() {
                     aria-label="Remember this device"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="w-4 h-4 text-primary bg-surface-container border-slate-500 rounded focus:ring-primary focus:ring-offset-0"
+                    className="w-4 h-4 text-primary bg-surface-container-lowest border border-slate-500 rounded focus:ring-primary focus:ring-offset-0 cursor-pointer"
                   />
-                  <label className="ml-2 text-sm text-on-surface-variant cursor-pointer select-none" htmlFor="remember">
+                  <label className="ml-2 text-sm text-on-surface font-semibold cursor-pointer select-none" htmlFor="remember">
                     Remember this device
                   </label>
                 </div>
@@ -3393,7 +3393,7 @@ export default function App() {
               </form>
 
               <div className="mt-6 pt-4 border-t border-outline-variant/30 text-center">
-                <p className="text-xs text-on-surface-variant font-medium">
+                <p className="text-xs text-on-surface font-semibold">
                   © 2026 ZEEXAI Technologies. All rights reserved.
                 </p>
               </div>

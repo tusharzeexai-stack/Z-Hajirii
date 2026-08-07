@@ -4940,34 +4940,48 @@ export default function App() {
                                       )}
                                     </td>
                                     <td className="py-4 px-4 text-xs">
-                                      {l.status === 'Pending' ? (
-                                        <div className="flex gap-1">
-                                          <button
-                                            onClick={() => {
-                                              setSelectedLeaveForAdminAction(l);
-                                              setAdminLeaveActionType('Approved');
-                                              setAdminLeaveComment('');
-                                              setIsAdminLeaveCommentModalOpen(true);
-                                            }}
-                                            className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded font-bold border border-emerald-200 cursor-pointer"
-                                          >
-                                            Approve
-                                          </button>
-                                          <button
-                                            onClick={() => {
-                                              setSelectedLeaveForAdminAction(l);
-                                              setAdminLeaveActionType('Rejected');
-                                              setAdminLeaveComment('');
-                                              setIsAdminLeaveCommentModalOpen(true);
-                                            }}
-                                            className="px-2 py-1 bg-red-50 hover:bg-red-100 text-error rounded font-bold border border-error/20 cursor-pointer"
-                                          >
-                                            Reject
-                                          </button>
-                                        </div>
-                                      ) : (
-                                        <span className="text-[11px] text-on-surface-variant/60 font-semibold italic">Processed</span>
-                                      )}
+                                      <div className="flex items-center gap-3">
+                                        {l.status === 'Pending' ? (
+                                          <div className="flex gap-1">
+                                            <button
+                                              onClick={() => {
+                                                setSelectedLeaveForAdminAction(l);
+                                                setAdminLeaveActionType('Approved');
+                                                setAdminLeaveComment('');
+                                                setIsAdminLeaveCommentModalOpen(true);
+                                              }}
+                                              className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded font-bold border border-emerald-200 cursor-pointer"
+                                            >
+                                              Approve
+                                            </button>
+                                            <button
+                                              onClick={() => {
+                                                setSelectedLeaveForAdminAction(l);
+                                                setAdminLeaveActionType('Rejected');
+                                                setAdminLeaveComment('');
+                                                setIsAdminLeaveCommentModalOpen(true);
+                                              }}
+                                              className="px-2 py-1 bg-red-50 hover:bg-red-100 text-error rounded font-bold border border-error/20 cursor-pointer"
+                                            >
+                                              Reject
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <span className="text-[11px] text-on-surface-variant/60 font-semibold italic">Processed</span>
+                                        )}
+                                        <button
+                                          onClick={() => {
+                                            if (window.confirm(`Are you sure you want to delete the leave request for ${applicant ? applicant.fullName : 'this employee'}?`)) {
+                                              deleteLeaveRequest(l.id);
+                                            }
+                                          }}
+                                          className="p-1 hover:bg-red-50 rounded text-on-surface-variant hover:text-error transition-all cursor-pointer"
+                                          title="Delete leave request"
+                                          aria-label="Delete leave request"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      </div>
                                     </td>
                                   </tr>
                                 );

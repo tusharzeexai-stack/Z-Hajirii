@@ -6,8 +6,11 @@
  *  - All routes require a valid JWT (Authorization: Bearer <token>)
  *  - GET /users NEVER returns password_hash — safe profiles only
  */
-const { getPool } = require('../db');
-const { respond, parseBody, verifyToken } = require('../utils');
+let getPool;
+try { getPool = require('../db').getPool; } catch { getPool = require('./db').getPool; }
+
+let respond, parseBody, verifyToken;
+try { ({ respond, parseBody, verifyToken } = require('../utils')); } catch { ({ respond, parseBody, verifyToken } = require('./utils')); }
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return respond(200, { ok: true }, event);

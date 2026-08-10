@@ -17,8 +17,22 @@ const ALLOWED_ORIGINS = [
 ];
 
 function getCorsOrigin(event) {
-  const origin = event?.headers?.origin || event?.headers?.Origin || '';
-  return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  const headers = event?.headers || {};
+  // Find case-insensitive origin header key
+  const originKey = Object.keys(headers).find(k => k.toLowerCase() === 'origin');
+  const origin = originKey ? headers[originKey] : '';
+
+  if (!origin) return '*';
+
+  if (
+    ALLOWED_ORIGINS.includes(origin) ||
+    origin.endsWith('.vercel.app') ||
+    origin.includes('localhost') ||
+    origin.includes('127.0.0.1')
+  ) {
+    return origin;
+  }
+  return ALLOWED_ORIGINS[0];
 }
 
 function getCorsHeaders(event) {

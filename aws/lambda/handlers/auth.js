@@ -12,8 +12,11 @@
 
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { getPool } = require('../db');
-const { respond, parseBody, JWT_SECRET } = require('../utils');
+let getPool;
+try { getPool = require('../db').getPool; } catch { getPool = require('./db').getPool; }
+
+let respond, parseBody, JWT_SECRET;
+try { ({ respond, parseBody, JWT_SECRET } = require('../utils')); } catch { ({ respond, parseBody, JWT_SECRET } = require('./utils')); }
 
 const TOKEN_EXPIRY = '8h';
 

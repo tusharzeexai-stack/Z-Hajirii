@@ -10,6 +10,8 @@ const jwt = require('jsonwebtoken');
 const ALLOWED_ORIGINS = [
   'https://z-hajirii.vercel.app',
   'https://d196dkcxe5jp1p.cloudfront.net',
+  'http://localhost:3004',
+  'http://localhost:3003',
   'http://localhost:3002',
   'http://localhost:3000',
 ];

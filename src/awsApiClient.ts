@@ -18,7 +18,11 @@
  *  - No sensitive data is cached in localStorage.
  */
 
-const API_BASE = (import.meta as any).env.VITE_API_GATEWAY_URL as string;
+const rawApiBase = ((import.meta as any).env.VITE_API_GATEWAY_URL as string) || '';
+const API_BASE = rawApiBase
+  .replace(/^["'%22]+|["'%22]+$/g, '')
+  .replace(/\/+$/, '')
+  .trim();
 
 if (!API_BASE) {
   console.warn(

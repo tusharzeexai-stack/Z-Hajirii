@@ -41,6 +41,34 @@ export function getAuthToken(): string | null {
 
 export function clearAuthToken(): void {
   sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem('zhajirii_session');
+}
+
+export function getClaimsFromToken(): { id: string; username: string; role: string; fullName?: string; employeeId?: string; exp?: number } | null {
+  const token = getAuthToken();
+  if (!token) return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    const payload = JSON.parse(jsonPayload);
+
+    // Check expiration
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      clearAuthToken();
+      return null;
+    }
+    return payload;
+  } catch (e) {
+    return null;
+  }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

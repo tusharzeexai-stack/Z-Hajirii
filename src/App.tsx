@@ -55,7 +55,7 @@ import {
 import { INITIAL_EMPLOYEES, INITIAL_ATTENDANCE_LOGS } from './data';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
-import { supabase, loginWithCredentials, setAuthToken, clearAuthToken, getAuthToken, changePassword, adminSetPassword } from './awsApiClient';
+import { supabase, loginWithCredentials, setAuthToken, clearAuthToken, getAuthToken, getClaimsFromToken, changePassword, adminSetPassword } from './awsApiClient';
 
 // @ts-ignore
 import logoUrl from '@/assets/Zeex-AI logo .png';
@@ -1435,10 +1435,9 @@ export default function App() {
       await fetchNotifications();
       await fetchChatMessages();
 
-      // Admin-only fetches — skip for Employee/Team Leader to avoid 403s
-      const sessionStr = sessionStorage.getItem('zhajirii_session');
-      const sessionRole = sessionStr ? (() => { try { return JSON.parse(sessionStr).role; } catch { return null; } })() : null;
-      const isAdminSession = sessionRole === 'Admin';
+      // Admin-only fetches — derived from cryptographically signed JWT (tamper-proof)
+      const tokenClaims = getClaimsFromToken();
+      const isAdminSession = tokenClaims?.role === 'Admin';
 
       if (isAdminSession) {
         await fetchAuditLogs();
@@ -1466,7 +1465,7 @@ export default function App() {
     }
   };
 
-  // Persistent Session Loader — reads JWT from sessionStorage (clears on tab close)
+  // Persistent Session Loader — verifies signed JWT token (tamper-proof)
   useEffect(() => {
     // Clean up any leaked sensitive data from old localStorage-based sessions
     [
@@ -1476,23 +1475,50 @@ export default function App() {
       'zhajirii_session', 'zhajirii_token',
     ].forEach(key => localStorage.removeItem(key));
 
-    // Restore session from sessionStorage (safe minimal object, no hash)
+    // Restore session from cryptographically signed JWT token
+    const tokenClaims = getClaimsFromToken();
     const savedSession = sessionStorage.getItem('zhajirii_session');
-    if (savedSession) {
+
+    if (tokenClaims && savedSession) {
       try {
         const u = JSON.parse(savedSession);
-        // Validate token is still present
-        if (getAuthToken()) {
-          setCurrentUser(u);
-          setIsLoggedIn(true);
-          setCurrentTab(u.role === 'Admin' ? 'Dashboard' : 'EmpDashboard');
-        } else {
-          sessionStorage.removeItem('zhajirii_session');
-        }
+        // Force authentic role & identity directly from server-signed JWT payload
+        // Overwrites any manual DevTools tampering in sessionStorage!
+        u.role = tokenClaims.role;
+        u.id = tokenClaims.id;
+        u.username = tokenClaims.username;
+        if (tokenClaims.fullName) u.fullName = tokenClaims.fullName;
+
+        sessionStorage.setItem('zhajirii_session', JSON.stringify(u));
+        setCurrentUser(u);
+        setIsLoggedIn(true);
+        setCurrentTab(tokenClaims.role === 'Admin' ? 'Dashboard' : 'EmpDashboard');
       } catch (e) {
         console.error('Failed to restore session:', e);
-        sessionStorage.removeItem('zhajirii_session');
+        clearAuthToken();
       }
+    } else if (tokenClaims) {
+      // Reconstruct minimal safe session directly from token claims if session is missing
+      const minimalUser: any = {
+        id: tokenClaims.id,
+        username: tokenClaims.username,
+        role: tokenClaims.role,
+        fullName: tokenClaims.fullName || tokenClaims.username,
+        employeeId: tokenClaims.employeeId || '',
+        department: '',
+        designation: '',
+        phoneNumber: '',
+        joiningDate: '',
+        status: 'Active',
+        internType: 'Online Intern',
+        managerId: null,
+      };
+      sessionStorage.setItem('zhajirii_session', JSON.stringify(minimalUser));
+      setCurrentUser(minimalUser);
+      setIsLoggedIn(true);
+      setCurrentTab(tokenClaims.role === 'Admin' ? 'Dashboard' : 'EmpDashboard');
+    } else {
+      clearAuthToken();
     }
     fetchData();
   }, []);

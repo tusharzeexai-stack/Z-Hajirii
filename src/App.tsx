@@ -1465,31 +1465,30 @@ export default function App() {
     }
   };
 
-  // Persistent Session Loader — verifies signed JWT token (tamper-proof)
+  // Persistent Session Loader — verifies signed JWT token from pure JS memory closure
   useEffect(() => {
-    // Clean up any leaked sensitive data from old localStorage-based sessions
-    [
-      'zhajirii_users', 'zhajirii_employees', 'zhajirii_logs',
-      'zhajirii_tasks', 'zhajirii_leaves', 'zhajirii_notifications',
-      'zhajirii_audit_logs', 'zhajirii_chat_messages',
-      'zhajirii_session', 'zhajirii_token',
-    ].forEach(key => localStorage.removeItem(key));
+    // Clean up any residual Web Storage entries so DevTools Application storage remains 100% blank
+    try {
+      sessionStorage.clear();
+      localStorage.clear();
+    } catch (e) {
+      // Ignore
+    }
 
-    // Restore session from cryptographically signed JWT token
+    // Restore session from cryptographically signed JWT token in JS memory
     const tokenClaims = getClaimsFromToken();
-    const savedSession = sessionStorage.getItem('zhajirii_session');
+    const savedSession = tokenStore.getSessionUser();
 
     if (tokenClaims && savedSession) {
       try {
-        const u = JSON.parse(savedSession);
+        const u = { ...savedSession };
         // Force authentic role & identity directly from server-signed JWT payload
-        // Overwrites any manual DevTools tampering in sessionStorage!
         u.role = tokenClaims.role;
         u.id = tokenClaims.id;
         u.username = tokenClaims.username;
         if (tokenClaims.fullName) u.fullName = tokenClaims.fullName;
 
-        sessionStorage.setItem('zhajirii_session', JSON.stringify(u));
+        tokenStore.setSessionUser(u);
         setCurrentUser(u);
         setIsLoggedIn(true);
         setCurrentTab(tokenClaims.role === 'Admin' ? 'Dashboard' : 'EmpDashboard');
@@ -1513,7 +1512,8 @@ export default function App() {
         internType: 'Online Intern',
         managerId: null,
       };
-      sessionStorage.setItem('zhajirii_session', JSON.stringify(minimalUser));
+
+      tokenStore.setSessionUser(minimalUser);
       setCurrentUser(minimalUser);
       setIsLoggedIn(true);
       setCurrentTab(tokenClaims.role === 'Admin' ? 'Dashboard' : 'EmpDashboard');

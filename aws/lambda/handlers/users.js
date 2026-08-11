@@ -25,15 +25,30 @@ exports.handler = async (event) => {
 
   try {
     if (method === 'GET') {
-      // Strip password_hash — NEVER send to frontend
-      const result = await pool.query(
-        `SELECT
-           id, username, full_name, email, employee_id, department,
-           designation, phone_number, joining_date, role, status,
-           intern_type, manager_id, created_at, updated_at
-         FROM users
-         ORDER BY created_at DESC`
-      );
+      let result;
+      if (caller.role === 'Admin') {
+        // Admin gets full user management records (password_hash stripped)
+        result = await pool.query(
+          `SELECT id, username, full_name, email, employee_id, department,
+                  designation, phone_number, joining_date, role, status,
+                  intern_type, manager_id, created_at, updated_at
+           FROM users
+           ORDER BY created_at DESC`
+        );
+      } else {
+        // Non-admin (Employee / Team Leader): Return full details for caller's own record,
+        // and safe sanitized directory projection for others (masking private phone/email)
+        result = await pool.query(
+          `SELECT id, username, full_name, designation, department, role, status,
+                  intern_type, manager_id, employee_id, created_at, updated_at,
+                  CASE WHEN id = $1 THEN email ELSE NULL END AS email,
+                  CASE WHEN id = $1 THEN phone_number ELSE NULL END AS phone_number,
+                  CASE WHEN id = $1 THEN joining_date ELSE NULL END AS joining_date
+           FROM users
+           ORDER BY created_at DESC`,
+          [caller.id]
+        );
+      }
       return respond(200, result.rows, event);
     }
 

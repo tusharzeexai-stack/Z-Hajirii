@@ -21,7 +21,25 @@ exports.handler = async (event) => {
 
   try {
     if (method === 'GET') {
-      const result = await pool.query('SELECT * FROM attendance_logs ORDER BY created_at DESC');
+      let result;
+      if (caller.role === 'Admin') {
+        result = await pool.query('SELECT * FROM attendance_logs ORDER BY created_at DESC');
+      } else if (caller.role === 'Team Leader') {
+        result = await pool.query(
+          `SELECT al.* FROM attendance_logs al
+           LEFT JOIN users u ON (al.employee_id = u.employee_id OR al.employee_id = u.id)
+           WHERE al.employee_id = $1 OR al.employee_id = $2 OR u.manager_id = $3
+           ORDER BY al.created_at DESC`,
+          [caller.id, caller.employeeId || caller.id, caller.id]
+        );
+      } else {
+        result = await pool.query(
+          `SELECT * FROM attendance_logs
+           WHERE employee_id = $1 OR employee_id = $2
+           ORDER BY created_at DESC`,
+          [caller.id, caller.employeeId || caller.id]
+        );
+      }
       return respond(200, result.rows, event);
     }
 

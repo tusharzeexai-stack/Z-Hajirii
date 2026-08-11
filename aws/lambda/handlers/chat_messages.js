@@ -21,16 +21,30 @@ exports.handler = async (event) => {
 
   try {
     if (method === 'GET') {
-      const result = await pool.query('SELECT * FROM chat_messages ORDER BY created_at ASC');
+      let result;
+      if (caller.role === 'Admin') {
+        result = await pool.query('SELECT * FROM chat_messages ORDER BY created_at ASC');
+      } else {
+        result = await pool.query(
+          `SELECT * FROM chat_messages
+           WHERE sender_id = $1 OR receiver_id = $1
+           ORDER BY created_at ASC`,
+          [caller.id]
+        );
+      }
       return respond(200, result.rows, event);
     }
 
     if (method === 'POST') {
       const { id, sender_id, receiver_id, message, created_at } = parseBody(event.body);
+
+      // Prevent spoofing sender ID
+      const effectiveSenderId = caller.role === 'Admin' ? sender_id : caller.id;
+
       await pool.query(
         `INSERT INTO chat_messages (id, sender_id, receiver_id, message, created_at)
          VALUES ($1,$2,$3,$4,$5)`,
-        [id, sender_id, receiver_id, message, created_at || new Date().toISOString()]
+        [id, effectiveSenderId, receiver_id, message, created_at || new Date().toISOString()]
       );
       return respond(200, { success: true }, event);
     }

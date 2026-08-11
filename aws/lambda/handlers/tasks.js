@@ -21,12 +21,42 @@ exports.handler = async (event) => {
 
   try {
     if (method === 'GET') {
-      const result = await pool.query('SELECT * FROM tasks ORDER BY created_at DESC');
+      let result;
+      if (caller.role === 'Admin') {
+        result = await pool.query('SELECT * FROM tasks ORDER BY created_at DESC');
+      } else if (caller.role === 'Team Leader') {
+        result = await pool.query(
+          `SELECT t.* FROM tasks t
+           LEFT JOIN users u ON t.user_id = u.id
+           WHERE t.user_id = $1 OR u.manager_id = $1
+           ORDER BY t.created_at DESC`,
+          [caller.id]
+        );
+      } else {
+        result = await pool.query(
+          'SELECT * FROM tasks WHERE user_id = $1 ORDER BY created_at DESC',
+          [caller.id]
+        );
+      }
       return respond(200, result.rows, event);
     }
 
     if (method === 'POST') {
       const { id, user_id, title, description, priority, deadline, status, attachment, completed_at } = parseBody(event.body);
+
+      // Security check: Non-admins can only create/update tasks for themselves or their managed interns
+      if (caller.role !== 'Admin') {
+        if (caller.role === 'Team Leader') {
+          const targetUser = await pool.query('SELECT manager_id FROM users WHERE id = $1', [user_id]);
+          const isManaged = targetUser.rows.length > 0 && targetUser.rows[0].manager_id === caller.id;
+          if (user_id !== caller.id && !isManaged) {
+            return respond(403, { error: 'Forbidden: Cannot create/edit tasks for unmanaged users.' }, event);
+          }
+        } else if (user_id !== caller.id) {
+          return respond(403, { error: 'Forbidden: Cannot create/edit tasks for other users.' }, event);
+        }
+      }
+
       await pool.query(
         `INSERT INTO tasks (id, user_id, title, description, priority, deadline, status, attachment, completed_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
@@ -46,6 +76,22 @@ exports.handler = async (event) => {
     if (method === 'DELETE') {
       const id = event.pathParameters?.id || event.queryStringParameters?.id;
       if (!id) return respond(400, { error: 'Missing id' }, event);
+
+      if (caller.role !== 'Admin') {
+        // Enforce ownership: only owner or manager can delete task
+        const taskRes = await pool.query(
+          `SELECT t.user_id, u.manager_id FROM tasks t
+           LEFT JOIN users u ON t.user_id = u.id
+           WHERE t.id = $1`, [id]
+        );
+        if (taskRes.rows.length > 0) {
+          const t = taskRes.rows[0];
+          if (t.user_id !== caller.id && t.manager_id !== caller.id) {
+            return respond(403, { error: 'Forbidden' }, event);
+          }
+        }
+      }
+
       await pool.query('DELETE FROM tasks WHERE id = $1', [id]);
       return respond(200, { deleted: true }, event);
     }

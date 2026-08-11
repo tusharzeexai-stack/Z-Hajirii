@@ -21,7 +21,23 @@ exports.handler = async (event) => {
 
   try {
     if (method === 'GET') {
-      const result = await pool.query('SELECT * FROM leave_requests ORDER BY created_at DESC');
+      let result;
+      if (caller.role === 'Admin') {
+        result = await pool.query('SELECT * FROM leave_requests ORDER BY created_at DESC');
+      } else if (caller.role === 'Team Leader') {
+        result = await pool.query(
+          `SELECT lr.* FROM leave_requests lr
+           LEFT JOIN users u ON lr.user_id = u.id
+           WHERE lr.user_id = $1 OR u.manager_id = $1
+           ORDER BY lr.created_at DESC`,
+          [caller.id]
+        );
+      } else {
+        result = await pool.query(
+          'SELECT * FROM leave_requests WHERE user_id = $1 ORDER BY created_at DESC',
+          [caller.id]
+        );
+      }
       return respond(200, result.rows, event);
     }
 
@@ -31,6 +47,19 @@ exports.handler = async (event) => {
         reason, description, attachment, status,
         admin_comment, approved_by, approved_at
       } = parseBody(event.body);
+
+      // Security Check
+      if (caller.role !== 'Admin') {
+        if (caller.role === 'Team Leader') {
+          const targetUser = await pool.query('SELECT manager_id FROM users WHERE id = $1', [user_id]);
+          const isManaged = targetUser.rows.length > 0 && targetUser.rows[0].manager_id === caller.id;
+          if (user_id !== caller.id && !isManaged) {
+            return respond(403, { error: 'Forbidden' }, event);
+          }
+        } else if (user_id !== caller.id) {
+          return respond(403, { error: 'Forbidden' }, event);
+        }
+      }
 
       await pool.query(
         `INSERT INTO leave_requests
@@ -59,6 +88,14 @@ exports.handler = async (event) => {
     if (method === 'DELETE') {
       const id = event.pathParameters?.id || event.queryStringParameters?.id;
       if (!id) return respond(400, { error: 'Missing id' }, event);
+
+      if (caller.role !== 'Admin') {
+        const leaveRes = await pool.query('SELECT user_id FROM leave_requests WHERE id = $1', [id]);
+        if (leaveRes.rows.length > 0 && leaveRes.rows[0].user_id !== caller.id) {
+          return respond(403, { error: 'Forbidden' }, event);
+        }
+      }
+
       await pool.query('DELETE FROM leave_requests WHERE id = $1', [id]);
       return respond(200, { deleted: true }, event);
     }

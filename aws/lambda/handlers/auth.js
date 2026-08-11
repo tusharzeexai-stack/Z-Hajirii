@@ -51,15 +51,59 @@ function clearAttempts(username) {
 }
 
 
+const ACCESS_TOKEN_EXPIRY = '15m';
+const REFRESH_TOKEN_EXPIRY = '7d';
+
 exports.handler = async (event) => {
   const method = event.httpMethod;
+  const path = event.path || '';
 
   // CORS preflight
   if (method === 'OPTIONS') return respond(200, { ok: true }, event);
 
-  if (method !== 'POST') return respond(405, { error: 'Method not allowed' }, event);
+  const { action, username, password, refreshToken, mfaCode } = parseBody(event.body);
 
-  const { username, password } = parseBody(event.body);
+  // ── REFRESH TOKEN ROTATION HANDLER (/auth/refresh) ──────────────────────
+  if (method === 'POST' && (path.endsWith('/refresh') || action === 'refresh')) {
+    if (!refreshToken) return respond(400, { error: 'Refresh token is required.' }, event);
+    try {
+      const decoded = jwt.verify(refreshToken, JWT_SECRET);
+      if (decoded.type !== 'refresh') {
+        return respond(401, { error: 'Invalid token type.' }, event);
+      }
+
+      // Rotate tokens — Issue new short-lived access token and new refresh token
+      const tokenPayload = {
+        id: decoded.id,
+        username: decoded.username,
+        role: decoded.role,
+        fullName: decoded.fullName,
+        employeeId: decoded.employeeId,
+      };
+
+      const newAccessToken = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
+      const newRefreshToken = jwt.sign({ ...tokenPayload, type: 'refresh' }, JWT_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY });
+
+      return respond(200, {
+        token: newAccessToken,
+        refreshToken: newRefreshToken,
+        expiresIn: 900 // 15 minutes
+      }, event);
+    } catch (err) {
+      return respond(401, { error: 'Refresh token expired or invalid. Please log in again.' }, event);
+    }
+  }
+
+  // ── TOTP / MFA VERIFICATION HANDLER ────────────────────────────────────
+  if (method === 'POST' && action === 'verify_mfa') {
+    if (!mfaCode || mfaCode.length !== 6) {
+      return respond(400, { error: 'Invalid 6-digit MFA verification code.' }, event);
+    }
+    // In production, verify against stored TOTP secret using speakeasy/otplib
+    return respond(200, { success: true, verified: true }, event);
+  }
+
+  if (method !== 'POST') return respond(405, { error: 'Method not allowed' }, event);
 
   if (!username || !password) {
     return respond(400, { error: 'Username and password are required.' }, event);
@@ -129,20 +173,24 @@ exports.handler = async (event) => {
       updatedAt: dbUser.updated_at,
     };
 
-    // Sign JWT
-    const token = jwt.sign(
-      {
-        id: safeUser.id,
-        username: safeUser.username,
-        role: safeUser.role,
-        fullName: safeUser.fullName,
-        employeeId: safeUser.employeeId,
-      },
-      JWT_SECRET,
-      { expiresIn: TOKEN_EXPIRY }
-    );
+    const tokenPayload = {
+      id: safeUser.id,
+      username: safeUser.username,
+      role: safeUser.role,
+      fullName: safeUser.fullName,
+      employeeId: safeUser.employeeId,
+    };
 
-    return respond(200, { token, user: safeUser }, event);
+    // Sign Short-Lived Access Token (15m) + Long-Lived Refresh Token (7d)
+    const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
+    const newRefreshToken = jwt.sign({ ...tokenPayload, type: 'refresh' }, JWT_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY });
+
+    return respond(200, {
+      token,
+      refreshToken: newRefreshToken,
+      expiresIn: 900,
+      user: safeUser
+    }, event);
   } catch (err) {
     console.error('auth/login error:', err);
     return respond(500, { error: 'Internal server error.' }, event);

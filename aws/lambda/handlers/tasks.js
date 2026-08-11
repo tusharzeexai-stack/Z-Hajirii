@@ -42,7 +42,19 @@ exports.handler = async (event) => {
     }
 
     if (method === 'POST') {
-      const { id, user_id, title, description, priority, deadline, status, attachment, completed_at } = parseBody(event.body);
+      const { id, user_id, title, description, priority, deadline, status, attachment, completed_at, file_type, file_size } = parseBody(event.body);
+
+      // Attachment File Validation (Pillar 6: File Upload Security)
+      if (attachment) {
+        const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+        if (file_size && file_size > MAX_SIZE) {
+          return respond(400, { error: 'Attachment exceeds maximum allowed size of 5MB.' }, event);
+        }
+        const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+        if (file_type && !ALLOWED_MIME.includes(file_type.toLowerCase())) {
+          return respond(400, { error: 'Invalid file type. Only PDF and images (JPEG, PNG, WEBP) are allowed.' }, event);
+        }
+      }
 
       // Security check: Non-admins can only create/update tasks for themselves or their managed interns
       if (caller.role !== 'Admin') {

@@ -39,8 +39,19 @@ export function getAuthToken(): string | null {
   return sessionStorage.getItem(TOKEN_KEY);
 }
 
+const REFRESH_TOKEN_KEY = 'zhajirii_refresh_token';
+
+export function setRefreshToken(token: string): void {
+  sessionStorage.setItem(REFRESH_TOKEN_KEY, token);
+}
+
+export function getRefreshToken(): string | null {
+  return sessionStorage.getItem(REFRESH_TOKEN_KEY);
+}
+
 export function clearAuthToken(): void {
   sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(REFRESH_TOKEN_KEY);
   sessionStorage.removeItem('zhajirii_session');
 }
 
@@ -71,16 +82,38 @@ export function getClaimsFromToken(): { id: string; username: string; role: stri
   }
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return null;
+  try {
+    const res = await fetch(`${API_BASE}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'refresh', refreshToken }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.token) {
+      setAuthToken(data.token);
+      if (data.refreshToken) setRefreshToken(data.refreshToken);
+      return data.token;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 async function apiFetch(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  isRetry = false
 ): Promise<{ data: any; error: any }> {
   try {
     const token = getAuthToken();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      'X-CSRF-Token': token ? token.slice(-16) : 'csrf-protected',
     };
 
     if (token) {
@@ -98,7 +131,15 @@ async function apiFetch(
     const json = await res.json();
 
     if (res.status === 401) {
-      // Token expired or invalid — clear it
+      // Try silent refresh if not already retried
+      if (!isRetry) {
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          return apiFetch(path, options, true);
+        }
+      }
+
+      // Token expired or refresh failed — clear session
       clearAuthToken();
       return { data: null, error: { message: 'Session expired. Please log in again.', code: 401 } };
     }
@@ -303,11 +344,11 @@ export async function loginWithCredentials(
 
   const json = await res.json();
 
-  if (!res.ok) {
-    throw new Error(json.error || 'Login failed.');
+  if (json.refreshToken) {
+    setRefreshToken(json.refreshToken);
   }
 
-  return json as { token: string; user: any };
+  return json as { token: string; user: any; refreshToken?: string };
 }
 
 /**

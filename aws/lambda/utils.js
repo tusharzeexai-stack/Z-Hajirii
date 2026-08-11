@@ -114,4 +114,42 @@ function verifyToken(event) {
   }
 }
 
-module.exports = { respond, parseBody, getCorsHeaders, JWT_SECRET, verifyToken };
+const crypto = require('crypto');
+const FIELD_ENCRYPTION_KEY = crypto.createHash('sha256').update(JWT_SECRET || 'zhajirii-field-encryption-key-2026').digest();
+
+/**
+ * AES-256-GCM Encryption for sensitive fields (e.g. phone numbers, tax IDs)
+ */
+function encryptField(text) {
+  if (!text) return text;
+  try {
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', FIELD_ENCRYPTION_KEY, iv);
+    let encrypted = cipher.update(text, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    const authTag = cipher.getAuthTag().toString('hex');
+    return `enc:${iv.toString('hex')}:${authTag}:${encrypted}`;
+  } catch (e) {
+    return text;
+  }
+}
+
+function decryptField(text) {
+  if (!text || typeof text !== 'string' || !text.startsWith('enc:')) return text;
+  try {
+    const parts = text.split(':');
+    if (parts.length !== 4) return text;
+    const iv = Buffer.from(parts[1], 'hex');
+    const authTag = Buffer.from(parts[2], 'hex');
+    const encryptedText = parts[3];
+    const decipher = crypto.createDecipheriv('aes-256-gcm', FIELD_ENCRYPTION_KEY, iv);
+    decipher.setAuthTag(authTag);
+    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch (e) {
+    return text;
+  }
+}
+
+module.exports = { respond, parseBody, getCorsHeaders, JWT_SECRET, verifyToken, encryptField, decryptField };

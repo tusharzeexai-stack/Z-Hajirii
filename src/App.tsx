@@ -1466,17 +1466,18 @@ export default function App() {
     }
   };
 
-  // Persistent Session Loader — verifies signed JWT token from pure JS memory closure
+  // Persistent Session Loader — verifies signed JWT token (tamper-proof)
   useEffect(() => {
-    // Clean up any residual Web Storage entries so DevTools Application storage remains 100% blank
+    // Clean up any leaked sensitive data from old localStorage-based sessions
     try {
-      sessionStorage.clear();
-      localStorage.clear();
-    } catch (e) {
-      // Ignore
-    }
+      [
+        'zhajirii_users', 'zhajirii_employees', 'zhajirii_logs',
+        'zhajirii_tasks', 'zhajirii_leaves', 'zhajirii_notifications',
+        'zhajirii_audit_logs', 'zhajirii_chat_messages'
+      ].forEach(key => localStorage.removeItem(key));
+    } catch (e) {}
 
-    // Restore session from cryptographically signed JWT token in JS memory
+    // Restore session from cryptographically signed JWT token
     const tokenClaims = getClaimsFromToken();
     const savedSession = tokenStore.getSessionUser();
 
@@ -1484,6 +1485,7 @@ export default function App() {
       try {
         const u = { ...savedSession };
         // Force authentic role & identity directly from server-signed JWT payload
+        // Overwrites any manual DevTools tampering!
         u.role = tokenClaims.role;
         u.id = tokenClaims.id;
         u.username = tokenClaims.username;
@@ -1498,7 +1500,7 @@ export default function App() {
         clearAuthToken();
       }
     } else if (tokenClaims) {
-      // Reconstruct minimal safe session directly from token claims if session is missing
+      // Reconstruct minimal safe session directly from token claims if session object missing
       const minimalUser: any = {
         id: tokenClaims.id,
         username: tokenClaims.username,
@@ -1521,8 +1523,14 @@ export default function App() {
     } else {
       clearAuthToken();
     }
-    fetchData();
   }, []);
+
+  // Fetch data only when authenticated
+  useEffect(() => {
+    if (isLoggedIn) {
+      fetchData();
+    }
+  }, [isLoggedIn]);
 
   // Sync employee data to state (no localStorage caching)
   useEffect(() => {

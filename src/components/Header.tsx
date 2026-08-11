@@ -175,6 +175,9 @@ export default function Header({
             <img
               src={currentUser.avatarUrl}
               alt={currentUser.fullName}
+              width="32"
+              height="32"
+              decoding="async"
               className="w-8 h-8 rounded-full object-cover border border-primary/20"
             />
           ) : (

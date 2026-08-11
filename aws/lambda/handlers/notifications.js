@@ -21,7 +21,17 @@ exports.handler = async (event) => {
 
   try {
     if (method === 'GET') {
-      const result = await pool.query('SELECT * FROM notifications ORDER BY created_at DESC');
+      let result;
+      if (caller.role === 'Admin') {
+        // Admin sees ALL notifications across all users
+        result = await pool.query('SELECT * FROM notifications ORDER BY created_at DESC');
+      } else {
+        // Employee / Team Leader only see their own notifications
+        result = await pool.query(
+          'SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC',
+          [caller.id]
+        );
+      }
       return respond(200, result.rows, event);
     }
 
@@ -31,13 +41,19 @@ exports.handler = async (event) => {
 
       if (action === 'mark_read') {
         const { id } = body;
-        await pool.query('UPDATE notifications SET is_read = true WHERE id = $1', [id]);
+        // Non-admin can only mark their own notifications
+        if (caller.role === 'Admin') {
+          await pool.query('UPDATE notifications SET is_read = true WHERE id = $1', [id]);
+        } else {
+          await pool.query('UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2', [id, caller.id]);
+        }
         return respond(200, { success: true }, event);
       }
 
       if (action === 'mark_all_read') {
-        const { user_id } = body;
-        await pool.query('UPDATE notifications SET is_read = true WHERE user_id = $1', [user_id]);
+        // Always scope to caller's own notifications for non-admin; admin passes user_id explicitly
+        const effectiveUserId = caller.role === 'Admin' ? (body.user_id || caller.id) : caller.id;
+        await pool.query('UPDATE notifications SET is_read = true WHERE user_id = $1', [effectiveUserId]);
         return respond(200, { success: true }, event);
       }
 
@@ -56,14 +72,20 @@ exports.handler = async (event) => {
       const action = event.queryStringParameters?.action;
 
       if (action === 'delete_by_user') {
-        const { user_id } = body;
-        await pool.query('DELETE FROM notifications WHERE user_id = $1', [user_id]);
+        // Non-admin can only clear their own notifications
+        const effectiveUserId = caller.role === 'Admin' ? (body.user_id || caller.id) : caller.id;
+        await pool.query('DELETE FROM notifications WHERE user_id = $1', [effectiveUserId]);
         return respond(200, { deleted: true }, event);
       }
 
       const id = event.pathParameters?.id || event.queryStringParameters?.id;
       if (!id) return respond(400, { error: 'Missing id' }, event);
-      await pool.query('DELETE FROM notifications WHERE id = $1', [id]);
+      // Non-admin can only delete their own notification
+      if (caller.role === 'Admin') {
+        await pool.query('DELETE FROM notifications WHERE id = $1', [id]);
+      } else {
+        await pool.query('DELETE FROM notifications WHERE id = $1 AND user_id = $2', [id, caller.id]);
+      }
       return respond(200, { deleted: true }, event);
     }
 

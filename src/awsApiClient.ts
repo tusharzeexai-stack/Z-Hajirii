@@ -31,6 +31,12 @@ function sanitizeApiBase(url: string | undefined): string {
     else cleaned = cleaned.slice(0, -1);
   }
   cleaned = cleaned.replace(/\/+$/, '').trim();
+
+  // If on HTTPS (e.g. Vercel) and URL is HTTP, use CloudFront HTTPS proxy to avoid Mixed Content / CSP blocks
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && cleaned.startsWith('http://')) {
+    return 'https://d196dkcxe5jp1p.cloudfront.net';
+  }
+
   return cleaned || 'https://d196dkcxe5jp1p.cloudfront.net';
 }
 

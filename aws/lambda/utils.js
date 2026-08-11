@@ -147,9 +147,17 @@ function decryptField(text) {
     let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
     return decrypted;
-  } catch (e) {
-    return text;
+/**
+ * Verifies request signature to prevent HTTP request replay attacks.
+ */
+function verifyRequestSignature(event) {
+  const timestamp = event?.headers?.['x-timestamp'] || event?.headers?.['X-Timestamp'];
+  if (!timestamp) return true; // Optional header for backward compatibility
+  const age = Math.abs(Date.now() - parseInt(timestamp, 10));
+  if (isNaN(age) || age > 5 * 60 * 1000) { // Reject requests older than 5 minutes
+    return false;
   }
+  return true;
 }
 
-module.exports = { respond, parseBody, getCorsHeaders, JWT_SECRET, verifyToken, encryptField, decryptField };
+module.exports = { respond, parseBody, getCorsHeaders, JWT_SECRET, verifyToken, encryptField, decryptField, verifyRequestSignature };

@@ -27,32 +27,28 @@ if (!API_BASE) {
   );
 }
 
+import { tokenStore } from './tokenStore';
+
 // ── Token Management ────────────────────────────────────────────────────────
 
-const TOKEN_KEY = 'zhajirii_token';
-
 export function setAuthToken(token: string): void {
-  sessionStorage.setItem(TOKEN_KEY, token);
+  tokenStore.setToken(token);
 }
 
 export function getAuthToken(): string | null {
-  return sessionStorage.getItem(TOKEN_KEY);
+  return tokenStore.getToken();
 }
 
-const REFRESH_TOKEN_KEY = 'zhajirii_refresh_token';
-
 export function setRefreshToken(token: string): void {
-  sessionStorage.setItem(REFRESH_TOKEN_KEY, token);
+  tokenStore.setRefreshToken(token);
 }
 
 export function getRefreshToken(): string | null {
-  return sessionStorage.getItem(REFRESH_TOKEN_KEY);
+  return tokenStore.getRefreshToken();
 }
 
 export function clearAuthToken(): void {
-  sessionStorage.removeItem(TOKEN_KEY);
-  sessionStorage.removeItem(REFRESH_TOKEN_KEY);
-  sessionStorage.removeItem('zhajirii_session');
+  tokenStore.clear();
 }
 
 export function getClaimsFromToken(): { id: string; username: string; role: string; fullName?: string; employeeId?: string; exp?: number } | null {

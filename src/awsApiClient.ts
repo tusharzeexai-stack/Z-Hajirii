@@ -306,7 +306,26 @@ export async function changePassword(
   }
 }
 
-// ── Public API ─────────────────────────────────────────────────────────────
+/**
+ * Calls POST /users?action=set_password to bcrypt-hash and store a new password for any user.
+ * Only Admin can call this — enforced server-side by JWT role check.
+ */
+export async function adminSetPassword(userId: string, newPassword: string): Promise<void> {
+  const token = getAuthToken();
+  const res = await fetch(`${API_BASE}/users?action=set_password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ user_id: userId, new_password: newPassword }),
+  });
+
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || 'Failed to set password.');
+  }
+}
 
 export const db = {
   from(table: string): QueryBuilder {

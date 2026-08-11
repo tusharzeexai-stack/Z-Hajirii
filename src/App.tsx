@@ -55,7 +55,7 @@ import {
 import { INITIAL_EMPLOYEES, INITIAL_ATTENDANCE_LOGS } from './data';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
-import { supabase, loginWithCredentials, setAuthToken, clearAuthToken, getAuthToken, changePassword } from './awsApiClient';
+import { supabase, loginWithCredentials, setAuthToken, clearAuthToken, getAuthToken, changePassword, adminSetPassword } from './awsApiClient';
 
 // @ts-ignore
 import logoUrl from '@/assets/Zeex-AI logo .png';
@@ -1671,23 +1671,14 @@ export default function App() {
       console.warn('Failed to sync employee record:', e);
     }
 
-    // 2. Hash and Save User
-    // Default hash is pre-computed bcrypt of 'Pass@123' (cost 10)
-    // Actual password changes should go through POST /auth/change-password
-    const DEFAULT_PASS_HASH = '$2b$10$Ibs3P91W0g7mGvMXSJFVjO4NQjZlL4UGRI9mPJcBFsTliqB02xeJy';
-    let passHash = editingUser ? editingUser.passwordHash : DEFAULT_PASS_HASH;
-    if (userFormPassword.trim()) {
-      // When admin sets a password, call the backend to hash it
-      // For now, we pass it as-is and let the Lambda bcrypt it on next login seed
-      // TODO: add POST /auth/admin-set-password endpoint for full security
-      passHash = userFormPassword.trim(); // will be hashed on first login attempt via auth Lambda
-    }
-
+    // 2. Build user record — password is handled separately on the server
+    // Always send empty string for passwordHash so the Lambda preserves the existing hash
+    // when editing, or uses the default 'Pass@123' for new users
     const targetUserId = editingUser ? editingUser.id : `usr-${Date.now()}`;
     const userToSave: UserRecord = {
       id: targetUserId,
       username: userFormUsername.trim(),
-      passwordHash: passHash,
+      passwordHash: '', // Lambda will preserve existing hash or use default for new users
       fullName: userFormFullName.trim(),
       email: userFormEmail.trim(),
       employeeId: employeeIdToUse,
@@ -1703,6 +1694,18 @@ export default function App() {
     };
 
     await saveUser(userToSave);
+
+    // 3. If admin explicitly set a new password, call the dedicated set_password endpoint
+    //    so the Lambda bcrypt-hashes it server-side before storage.
+    if (userFormPassword.trim()) {
+      try {
+        await adminSetPassword(targetUserId, userFormPassword.trim());
+        showToast('Password updated successfully.');
+      } catch (pwErr: any) {
+        console.warn('adminSetPassword failed:', pwErr.message);
+        showToast('User saved but password update failed: ' + pwErr.message);
+      }
+    }
 
     // Write logs & notifications
     if (editingUser) {

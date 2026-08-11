@@ -6,6 +6,7 @@
  *  - All routes require a valid JWT (Authorization: Bearer <token>)
  *  - GET /users NEVER returns password_hash — safe profiles only
  */
+const bcrypt = require('bcryptjs');
 let getPool;
 try { getPool = require('../db').getPool; } catch { getPool = require('./db').getPool; }
 
@@ -45,7 +46,28 @@ exports.handler = async (event) => {
         return respond(403, { error: 'Forbidden: Admin access required.' }, event);
       }
 
-      // Batch delete (prune mock users)
+      // ── Admin Set Password (bcrypt-hashes on server) ─────────────────────
+      if (action === 'set_password') {
+        const { user_id, new_password } = body;
+        if (!user_id || !new_password) {
+          return respond(400, { error: 'user_id and new_password are required.' }, event);
+        }
+        if (new_password.length < 6) {
+          return respond(400, { error: 'Password must be at least 6 characters.' }, event);
+        }
+        const hashed = await bcrypt.hash(new_password, 10);
+        const result = await pool.query(
+          `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2 RETURNING id, username`,
+          [hashed, user_id]
+        );
+        if (result.rowCount === 0) {
+          return respond(404, { error: 'User not found.' }, event);
+        }
+        console.log(`[admin] Password reset for user: ${result.rows[0].username}`);
+        return respond(200, { success: true }, event);
+      }
+
+      // ── Batch delete (prune users) ────────────────────────────────────────
       if (action === 'delete_in') {
         const ids = body.ids;
         if (!ids || !ids.length) return respond(200, { deleted: 0 }, event);
@@ -60,6 +82,29 @@ exports.handler = async (event) => {
         department, designation, phone_number, joining_date,
         role, status, intern_type, manager_id
       } = body;
+
+      // ── Password safety: always ensure stored hash is bcrypt ───────────────
+      let finalHash = password_hash || '';
+      if (finalHash && !finalHash.startsWith('$2b$') && !finalHash.startsWith('$2a$')) {
+        // Plaintext was passed — hash it now (covers legacy & Admin dashboard path)
+        finalHash = await bcrypt.hash(finalHash, 10);
+      }
+
+      if (id) {
+        // Check if this is an UPDATE (user exists). If no password supplied, keep existing hash.
+        const existing = await pool.query('SELECT password_hash FROM users WHERE id = $1', [id]);
+        if (existing.rows.length > 0 && !password_hash) {
+          // Editing existing user but no new password given → preserve old hash
+          finalHash = existing.rows[0].password_hash;
+        } else if (existing.rows.length > 0 && !finalHash) {
+          finalHash = existing.rows[0].password_hash;
+        }
+      }
+
+      // Fall back to hashed default 'Pass@123' for brand-new users with no password
+      if (!finalHash) {
+        finalHash = await bcrypt.hash('Pass@123', 10);
+      }
 
       await pool.query(
         `INSERT INTO users
@@ -81,7 +126,7 @@ exports.handler = async (event) => {
            intern_type   = EXCLUDED.intern_type,
            manager_id    = EXCLUDED.manager_id,
            updated_at    = NOW()`,
-        [id, username, password_hash, full_name, email, employee_id,
+        [id, username, finalHash, full_name, email, employee_id,
          department, designation, phone_number, joining_date,
          role, status, intern_type, manager_id]
       );

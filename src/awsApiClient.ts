@@ -18,11 +18,23 @@
  *  - No sensitive data is cached in localStorage.
  */
 
-const rawApiBase = ((import.meta as any).env.VITE_API_GATEWAY_URL as string) || '';
-const API_BASE = rawApiBase
-  .replace(/^["'%22]+|["'%22]+$/g, '')
-  .replace(/\/+$/, '')
-  .trim();
+function sanitizeApiBase(url: string | undefined): string {
+  if (!url) return 'https://d196dkcxe5jp1p.cloudfront.net';
+  let cleaned = String(url).trim();
+  // Strip URL-encoded %22 or quotes
+  while (cleaned.startsWith('%22') || cleaned.startsWith('"') || cleaned.startsWith("'")) {
+    if (cleaned.startsWith('%22')) cleaned = cleaned.slice(3);
+    else cleaned = cleaned.slice(1);
+  }
+  while (cleaned.endsWith('%22') || cleaned.endsWith('"') || cleaned.endsWith("'")) {
+    if (cleaned.endsWith('%22')) cleaned = cleaned.slice(0, -3);
+    else cleaned = cleaned.slice(0, -1);
+  }
+  cleaned = cleaned.replace(/\/+$/, '').trim();
+  return cleaned || 'https://d196dkcxe5jp1p.cloudfront.net';
+}
+
+const API_BASE = sanitizeApiBase((import.meta as any).env.VITE_API_GATEWAY_URL);
 
 if (!API_BASE) {
   console.warn(

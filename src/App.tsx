@@ -56,6 +56,7 @@ import { INITIAL_EMPLOYEES, INITIAL_ATTENDANCE_LOGS } from './data';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import { supabase, loginWithCredentials, setAuthToken, clearAuthToken, getAuthToken, getClaimsFromToken, changePassword, adminSetPassword } from './awsApiClient';
+import { tokenStore } from './tokenStore';
 
 // @ts-ignore
 import logoUrl from '@/assets/Zeex-AI logo .png';

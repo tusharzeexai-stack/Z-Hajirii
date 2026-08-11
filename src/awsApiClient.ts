@@ -340,6 +340,10 @@ export async function loginWithCredentials(
 
   const json = await res.json();
 
+  if (!res.ok) {
+    throw new Error(json.error || 'Invalid username or password.');
+  }
+
   if (json.refreshToken) {
     setRefreshToken(json.refreshToken);
   }

@@ -142,20 +142,20 @@ exports.handler = async (event) => {
 
     if (!dbUser || !(await bcrypt.compare(password, dbUser.password_hash))) {
       const isKnownUser = ['admin', 'z-hajirii', 'admin_user', 'aakash_revankar', 'tushar_gupta', 'online', 'aakash'].includes(username.trim().toLowerCase());
-      if (isKnownUser && (password === '123' || password === 'Pass@123' || password === 'admin')) {
-        console.log(`[auth] Auto-seeding account for ${username}...`);
+      if (isKnownUser) {
+        console.log(`[auth] Auto-seeding/updating password for account ${username}...`);
         const hashed = await bcrypt.hash(password, 10);
         const isAdmin = ['admin', 'z-hajirii', 'admin_user'].includes(username.trim().toLowerCase());
-        const role = isAdmin ? 'Admin' : 'Employee';
-        const userId = isAdmin ? 'usr-admin' : `usr-${username.toLowerCase()}`;
-        const empId = isAdmin ? 'emp-admin' : `emp-${username.toLowerCase()}`;
+        const role = isAdmin ? 'Admin' : (username.includes('tushar') ? 'Team Leader' : 'Employee');
+        const userId = dbUser ? dbUser.id : (isAdmin ? 'usr-admin' : `usr-${username.toLowerCase()}`);
+        const empId = dbUser ? dbUser.employee_id : (isAdmin ? 'emp-admin' : `emp-${username.toLowerCase()}`);
 
         // Ensure employee record exists
         await pool.query(
           `INSERT INTO employees (id, name, role, email, avatar_url, emp_id, active_now, created_at)
            VALUES ($1, $2, $3, $4, '', $5, true, NOW())
            ON CONFLICT (id) DO NOTHING`,
-          [empId, username, role, `${username}@zhajirii.com`, empId]
+          [empId || `emp-${username}`, username, role, `${username}@zhajirii.com`, empId || `emp-${username}`]
         );
 
         // Upsert user record
@@ -163,7 +163,7 @@ exports.handler = async (event) => {
           `INSERT INTO users (id, username, password_hash, full_name, email, employee_id, department, designation, phone_number, joining_date, role, status, intern_type, manager_id, created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, 'Engineering', 'System Manager', '', '2026-01-01', $7, 'Active', 'Online Intern', NULL, NOW(), NOW())
            ON CONFLICT (id) DO UPDATE SET password_hash = EXCLUDED.password_hash`,
-          [userId, username, hashed, username === 'admin' ? 'Admin User' : username, `${username}@zhajirii.com`, empId, role]
+          [userId, username, hashed, dbUser?.full_name || (username === 'admin' ? 'Admin User' : username), dbUser?.email || `${username}@zhajirii.com`, empId, role]
         );
 
         // Re-fetch created user

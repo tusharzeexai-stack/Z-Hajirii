@@ -147,6 +147,11 @@ function decryptField(text) {
     let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
     return decrypted;
+  } catch (e) {
+    return text;
+  }
+}
+
 /**
  * Verifies request signature to prevent HTTP request replay attacks.
  */

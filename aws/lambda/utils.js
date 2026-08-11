@@ -39,8 +39,8 @@ function getCorsHeaders(event) {
   return {
     // ── CORS ────────────────────────────────────────────────────
     'Access-Control-Allow-Origin': getCorsOrigin(event),
-    'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-    'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-CSRF-Token, x-csrf-token, X-Signature, x-signature, X-Timestamp, x-timestamp, X-Nonce, x-nonce, X-Requested-With, apikey, Prefer, Range, Accept, Origin',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
     'Access-Control-Allow-Credentials': 'true',
     'Content-Type': 'application/json',
 

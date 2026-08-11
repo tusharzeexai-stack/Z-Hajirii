@@ -1516,13 +1516,20 @@ export default function App() {
     }
   }, [currentUser, employees]);
 
-  // Chat messages polling loop (runs every 3 seconds)
+  // Chat & notification polling — runs every 30s (was 3s = 10x reduction)
+  // Skips fetch when the browser tab is hidden to avoid wasted Lambda cold-starts.
   useEffect(() => {
     if (!currentUser) return;
-    const interval = setInterval(() => {
-      fetchChatMessages();
-      fetchNotifications();
-    }, 3000);
+
+    const poll = () => {
+      if (document.visibilityState === 'visible') {
+        fetchChatMessages();
+        fetchNotifications();
+      }
+    };
+
+    // Initial fetch already done by fetchData() on login — start timer after 30s
+    const interval = setInterval(poll, 30000);
     return () => clearInterval(interval);
   }, [currentUser]);
 

@@ -1,10 +1,9 @@
-// ecosystem.config.js — PM2 process manager config for EC2
+// ecosystem.config.js — PM2 process manager config for EC2 / servers
 module.exports = {
   apps: [
     {
       name: 'zhajirii-backend',
       script: 'server.js',
-      cwd: '/home/ec2-user/zhajirii/backend',
       instances: 2,           // Use 2 CPU cores; set to 'max' for all cores
       exec_mode: 'cluster',   // Cluster mode for load balancing
       watch: false,
@@ -13,8 +12,6 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 5000,
       },
-      error_file: '/home/ec2-user/logs/zhajirii-error.log',
-      out_file:   '/home/ec2-user/logs/zhajirii-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
   ],

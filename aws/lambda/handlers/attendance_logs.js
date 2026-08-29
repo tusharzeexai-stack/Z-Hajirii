@@ -1,19 +1,46 @@
 /**
  * attendance_logs.js — Lambda handler for /attendance_logs resource.
+ *
+ * Security: All routes require a valid JWT (Authorization: Bearer <token>)
  */
-const { getPool } = require('../db');
-const { respond, parseBody } = require('../utils');
+let getPool;
+try { getPool = require('../db').getPool; } catch { getPool = require('./db').getPool; }
+
+let respond, parseBody, verifyToken;
+try { ({ respond, parseBody, verifyToken } = require('../utils')); } catch { ({ respond, parseBody, verifyToken } = require('./utils')); }
 
 exports.handler = async (event) => {
+  if (event.httpMethod === 'OPTIONS') return respond(200, { ok: true }, event);
+
+  // ── JWT Guard ──────────────────────────────────────────────────────────────
+  const caller = verifyToken(event);
+  if (!caller) return respond(401, { error: 'Unauthorized' }, event);
+
   const pool = await getPool();
   const method = event.httpMethod;
 
   try {
-    if (method === 'OPTIONS') return respond(200, { ok: true });
-
     if (method === 'GET') {
-      const result = await pool.query('SELECT * FROM attendance_logs ORDER BY created_at DESC');
-      return respond(200, result.rows);
+      let result;
+      if (caller.role === 'Admin') {
+        result = await pool.query('SELECT * FROM attendance_logs ORDER BY created_at DESC');
+      } else if (caller.role === 'Team Leader') {
+        result = await pool.query(
+          `SELECT al.* FROM attendance_logs al
+           LEFT JOIN users u ON (al.employee_id = u.employee_id OR al.employee_id = u.id)
+           WHERE al.employee_id = $1 OR al.employee_id = $2 OR u.manager_id = $3
+           ORDER BY al.created_at DESC`,
+          [caller.id, caller.employeeId || caller.id, caller.id]
+        );
+      } else {
+        result = await pool.query(
+          `SELECT * FROM attendance_logs
+           WHERE employee_id = $1 OR employee_id = $2
+           ORDER BY created_at DESC`,
+          [caller.id, caller.employeeId || caller.id]
+        );
+      }
+      return respond(200, result.rows, event);
     }
 
     if (method === 'POST') {
@@ -21,9 +48,10 @@ exports.handler = async (event) => {
       const action = event.queryStringParameters?.action;
 
       if (action === 'delete_by_employee') {
+        if (caller.role !== 'Admin') return respond(403, { error: 'Forbidden' }, event);
         const { employee_id } = body;
         await pool.query('DELETE FROM attendance_logs WHERE employee_id = $1', [employee_id]);
-        return respond(200, { deleted: true });
+        return respond(200, { deleted: true }, event);
       }
 
       if (action === 'update' || body.eq_col) {
@@ -43,7 +71,7 @@ exports.handler = async (event) => {
             `UPDATE attendance_logs SET ${fields.join(', ')} WHERE id = $${idx}`,
             values
           );
-          return respond(200, { success: true });
+          return respond(200, { success: true }, event);
         }
 
         if (fields.length > 0 && body.employee_id && body.date) {
@@ -52,7 +80,7 @@ exports.handler = async (event) => {
             `UPDATE attendance_logs SET ${fields.join(', ')} WHERE employee_id = $${idx++} AND date = $${idx}`,
             values
           );
-          return respond(200, { success: true });
+          return respond(200, { success: true }, event);
         }
       }
 
@@ -68,19 +96,20 @@ exports.handler = async (event) => {
            status      = EXCLUDED.status`,
         [id, employee_id, date, clock_in, clock_out, total_hours, status]
       );
-      return respond(200, { success: true });
+      return respond(200, { success: true }, event);
     }
 
     if (method === 'DELETE') {
+      if (caller.role !== 'Admin') return respond(403, { error: 'Forbidden' }, event);
       const id = event.pathParameters?.id || event.queryStringParameters?.id;
-      if (!id) return respond(400, { error: 'Missing id' });
+      if (!id) return respond(400, { error: 'Missing id' }, event);
       await pool.query('DELETE FROM attendance_logs WHERE id = $1', [id]);
-      return respond(200, { deleted: true });
+      return respond(200, { deleted: true }, event);
     }
 
-    return respond(405, { error: 'Method not allowed' });
+    return respond(405, { error: 'Method not allowed' }, event);
   } catch (err) {
     console.error('attendance_logs handler error:', err);
-    return respond(500, { error: err.message });
+    return respond(500, { error: err.message }, event);
   }
 };

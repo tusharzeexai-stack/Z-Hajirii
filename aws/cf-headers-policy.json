@@ -1,0 +1,11 @@
+{
+  "Name": "zhajirii-strip-amz-headers",
+  "Comment": "Remove AWS X-Amz headers from API Gateway responses",
+  "RemoveHeadersConfig": {
+    "Quantity": 2,
+    "Items": [
+      { "Header": "X-Amz-Apigw-Id" },
+      { "Header": "X-Amzn-Trace-Id" }
+    ]
+  }
+}

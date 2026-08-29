@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -16,6 +15,7 @@
   --color-error: #ba1a1a;
   --color-error-container: #ffdad6;
   --color-on-surface-variant: #42474f;
+  --color-on-surface: #1a1c1e;
   --color-outline-variant: #c2c7d1;
 }
 

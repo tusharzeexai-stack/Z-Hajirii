@@ -11,15 +11,92 @@
  *   db.from('table').delete().in('col', [vals])
  *
  * All methods return { data, error } to match Supabase SDK behavior.
+ *
+ * Security:
+ *  - Attaches Authorization: Bearer <jwt> header on every request.
+ *  - Token is read from sessionStorage (cleared on tab/window close).
+ *  - No sensitive data is cached in localStorage.
  */
 
 const API_BASE = (import.meta as any).env.VITE_API_GATEWAY_URL || '/api';
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+import { tokenStore } from './tokenStore';
+
+// ── Token Management ────────────────────────────────────────────────────────
+
+export function setAuthToken(token: string): void {
+  tokenStore.setToken(token);
+}
+
+export function getAuthToken(): string | null {
+  return tokenStore.getToken();
+}
+
+export function setRefreshToken(token: string): void {
+  tokenStore.setRefreshToken(token);
+}
+
+export function getRefreshToken(): string | null {
+  return tokenStore.getRefreshToken();
+}
+
+export function clearAuthToken(): void {
+  tokenStore.clear();
+}
+
+export function getClaimsFromToken(): { id: string; username: string; role: string; fullName?: string; employeeId?: string; exp?: number } | null {
+  const token = getAuthToken();
+  if (!token) return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    const payload = JSON.parse(jsonPayload);
+
+    // Check expiration
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      clearAuthToken();
+      return null;
+    }
+    return payload;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return null;
+  try {
+    const res = await fetch(`${API_BASE}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'refresh', refreshToken }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.token) {
+      setAuthToken(data.token);
+      if (data.refreshToken) setRefreshToken(data.refreshToken);
+      return data.token;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 async function apiFetch(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  isRetry = false
 ): Promise<{ data: any; error: any }> {
   try {
     const baseUrl = (API_BASE || '/api').replace(/\/$/, '');
@@ -31,6 +108,10 @@ async function apiFetch(
     const res = await fetch(targetUrl, {
       headers: { 'Content-Type': 'application/json' },
       ...options,
+      headers: {
+        ...headers,
+        ...(options.headers as Record<string, string> || {}),
+      },
     });
 
     const contentType = res.headers.get('content-type') || '';
@@ -40,9 +121,25 @@ async function apiFetch(
     }
 
     const json = await res.json();
+
+    if (res.status === 401) {
+      // Try silent refresh if not already retried
+      if (!isRetry) {
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          return apiFetch(path, options, true);
+        }
+      }
+
+      // Token expired or refresh failed — clear session
+      clearAuthToken();
+      return { data: null, error: { message: 'Session expired. Please log in again.', code: 401 } };
+    }
+
     if (!res.ok) {
       return { data: null, error: { message: json.error || `HTTP ${res.status}` } };
     }
+
     return { data: json, error: null };
   } catch (err: any) {
     return { data: null, error: { message: err.message || 'Network error' } };
@@ -221,7 +318,79 @@ class QueryBuilder {
   }
 }
 
-// ── Public API ─────────────────────────────────────────────────────────────
+// ── Auth API ───────────────────────────────────────────────────────────────
+
+/**
+ * Calls POST /auth/login and returns { token, user } or throws an error string.
+ * Password verification happens entirely on the server — no hashes cross the wire.
+ */
+export async function loginWithCredentials(
+  username: string,
+  password: string
+): Promise<{ token: string; user: any }> {
+  const res = await fetch(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+
+  const json = await res.json();
+
+  if (!res.ok) {
+    throw new Error(json.error || 'Invalid username or password.');
+  }
+
+  if (json.refreshToken) {
+    setRefreshToken(json.refreshToken);
+  }
+
+  return json as { token: string; user: any; refreshToken?: string };
+}
+
+/**
+ * Calls POST /auth/change-password to update password server-side.
+ * The old password is verified and the new hash computed entirely on the server.
+ */
+export async function changePassword(
+  oldPassword: string,
+  newPassword: string
+): Promise<void> {
+  const token = getAuthToken();
+  const res = await fetch(`${API_BASE}/auth/change-password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+  });
+
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || 'Failed to change password.');
+  }
+}
+
+/**
+ * Calls POST /users?action=set_password to bcrypt-hash and store a new password for any user.
+ * Only Admin can call this — enforced server-side by JWT role check.
+ */
+export async function adminSetPassword(userId: string, newPassword: string): Promise<void> {
+  const token = getAuthToken();
+  const res = await fetch(`${API_BASE}/users?action=set_password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ user_id: userId, new_password: newPassword }),
+  });
+
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || 'Failed to set password.');
+  }
+}
 
 export const db = {
   from(table: string): QueryBuilder {

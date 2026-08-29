@@ -51,6 +51,7 @@ export default function Header({
         <button
           onClick={onMobileMenuToggle}
           className="lg:hidden p-2 hover:bg-surface-container-low rounded-full text-primary"
+          aria-label="Open mobile menu"
         >
           <Menu className="w-6 h-6" />
         </button>
@@ -60,8 +61,9 @@ export default function Header({
             type="text"
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full bg-surface-container-low border border-outline-variant rounded-full py-2 pl-10 pr-4 font-normal text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            className="w-full bg-surface-container-low border border-slate-500 rounded-full py-2 pl-10 pr-4 font-normal text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-on-surface-variant"
             placeholder={placeholder}
+            aria-label="Search"
           />
         </div>
       </div>
@@ -71,6 +73,7 @@ export default function Header({
         <button
           onClick={() => setDropdownOpen(!dropdownOpen)}
           className="hover:bg-surface-container-low rounded-full p-2 text-on-surface-variant relative active:scale-95 transition-transform"
+          aria-label="Notifications"
         >
           <Bell className="w-5 h-5" />
           {unreadCount > 0 && (
@@ -97,6 +100,7 @@ export default function Header({
                         onMarkAllRead();
                       }}
                       title="Mark all as read"
+                      aria-label="Mark all notifications as read"
                       className="p-1 hover:bg-emerald-50 text-emerald-600 rounded"
                     >
                       <Check className="w-3.5 h-3.5" />
@@ -108,6 +112,7 @@ export default function Header({
                         onClearNotifications();
                       }}
                       title="Clear all"
+                      aria-label="Clear all notifications"
                       className="p-1 hover:bg-red-50 text-error rounded"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -157,6 +162,7 @@ export default function Header({
         <button
           onClick={onSettingsClick}
           className="hover:bg-surface-container-low rounded-full p-2 text-on-surface-variant active:scale-95 transition-transform"
+          aria-label="Settings"
         >
           <Settings className="w-5 h-5" />
         </button>
@@ -169,6 +175,9 @@ export default function Header({
             <img
               src={currentUser.avatarUrl}
               alt={currentUser.fullName}
+              width="32"
+              height="32"
+              decoding="async"
               className="w-8 h-8 rounded-full object-cover border border-primary/20"
             />
           ) : (

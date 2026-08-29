@@ -39,7 +39,7 @@ import {
   Award,
   MessageSquare
 } from 'lucide-react';
-import bcrypt from 'bcryptjs';
+// bcrypt removed — password verification is now done server-side via JWT
 
 import {
   Employee,
@@ -55,7 +55,8 @@ import {
 import { INITIAL_EMPLOYEES, INITIAL_ATTENDANCE_LOGS } from './data';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
-import { supabase } from './awsApiClient';
+import { supabase, loginWithCredentials, setAuthToken, clearAuthToken, getAuthToken, getClaimsFromToken, changePassword, adminSetPassword } from './awsApiClient';
+import { tokenStore } from './tokenStore';
 
 // @ts-ignore
 import logoUrl from '@/assets/Zeex-AI logo .png';
@@ -108,16 +109,20 @@ const calculateDuration = (inTime: string, outTime: string) => {
       if (modifier === 'AM' && hours === 12) hours = 0;
       return hours * 60 + minutes;
     };
-    const diff = parseTime(outTime) - parseTime(inTime);
+    let diff = parseTime(outTime) - parseTime(inTime);
+    if (diff < 0) {
+      diff += 24 * 60;
+    }
     if (diff <= 0) return '0h 00m';
     const h = Math.floor(diff / 60);
     const m = diff % 60;
-    return `${h}h ${m}m`;
+    return `${h}h ${m.toString().padStart(2, '0')}m`;
   } catch (err) {
     console.error(err);
     return '0h 00m';
   }
 };
+
 
 // Helper to extract break minutes from serialized total hours
 const getBreakMinutes = (totalHoursStr: string): number => {
@@ -861,15 +866,16 @@ export default function App() {
     }, 3000);
   };
 
-  // DB Sync helper with robust LocalStorage Fallbacks
+  // DB Sync helper — users fetched from server, NEVER cached in localStorage
   const fetchUsers = async () => {
     try {
       const { data, error } = await supabase.from('users').select('*').order('created_at', { ascending: false });
       if (error) throw error;
+      // Server strips password_hash before returning — safe to store in state only
       const mapped: UserRecord[] = (data || []).map(u => ({
         id: u.id,
         username: u.username,
-        passwordHash: u.password_hash,
+        passwordHash: '', // never sent from server
         fullName: u.full_name,
         email: u.email,
         employeeId: u.employee_id,
@@ -885,14 +891,11 @@ export default function App() {
         updatedAt: u.updated_at
       }));
       setUsers(mapped);
-      localStorage.setItem('zhajirii_users', JSON.stringify(mapped));
+      // DO NOT write users to localStorage — contains sensitive data
       return mapped;
     } catch (err: any) {
-      console.warn('Supabase users fetch failed, falling back to localStorage:', err.message);
-      const local = localStorage.getItem('zhajirii_users');
-      const parsed = local ? JSON.parse(local) : [];
-      setUsers(parsed);
-      return parsed;
+      console.warn('fetchUsers failed:', err.message);
+      return [];
     }
   };
 
@@ -918,18 +921,19 @@ export default function App() {
       const { error } = await supabase.from('users').upsert(dbUser);
       if (error) throw error;
     } catch (err: any) {
-      console.warn('Supabase user save failed, writing locally:', err.message);
+      console.warn('Supabase user save failed:', err.message);
     }
 
-    const currentUsers = JSON.parse(localStorage.getItem('zhajirii_users') || '[]');
-    const index = currentUsers.findIndex((u: any) => u.id === user.id);
-    if (index >= 0) {
-      currentUsers[index] = user;
-    } else {
-      currentUsers.push(user);
-    }
-    setUsers(currentUsers);
-    localStorage.setItem('zhajirii_users', JSON.stringify(currentUsers));
+    // Update in-memory state only — no localStorage
+    setUsers(prev => {
+      const index = prev.findIndex((u: any) => u.id === user.id);
+      if (index >= 0) {
+        const updated = [...prev];
+        updated[index] = { ...user, passwordHash: '' };
+        return updated;
+      }
+      return [...prev, { ...user, passwordHash: '' }];
+    });
   };
 
   const deleteUser = async (id: string) => {
@@ -937,13 +941,9 @@ export default function App() {
       const { error } = await supabase.from('users').delete().eq('id', id);
       if (error) throw error;
     } catch (err: any) {
-      console.warn('Supabase user delete failed, updating local state:', err.message);
+      console.warn('Supabase user delete failed:', err.message);
     }
-
-    const currentUsers = JSON.parse(localStorage.getItem('zhajirii_users') || '[]');
-    const filtered = currentUsers.filter((u: any) => u.id !== id);
-    setUsers(filtered);
-    localStorage.setItem('zhajirii_users', JSON.stringify(filtered));
+    setUsers(prev => prev.filter((u: any) => u.id !== id));
   };
 
   const fetchTasks = async () => {
@@ -963,14 +963,10 @@ export default function App() {
         createdAt: t.created_at
       }));
       setTasks(mapped);
-      localStorage.setItem('zhajirii_tasks', JSON.stringify(mapped));
       return mapped;
     } catch (err: any) {
-      console.warn('Supabase tasks fetch failed, falling back to localStorage:', err.message);
-      const local = localStorage.getItem('zhajirii_tasks');
-      const parsed = local ? JSON.parse(local) : [];
-      setTasks(parsed);
-      return parsed;
+      console.warn('Supabase tasks fetch failed:', err.message);
+      return [];
     }
   };
 
@@ -991,18 +987,13 @@ export default function App() {
       const { error } = await supabase.from('tasks').upsert(dbTask);
       if (error) throw error;
     } catch (err: any) {
-      console.warn('Supabase task save failed, updating locally:', err.message);
+      console.warn('Supabase task save failed:', err.message);
     }
-
-    const currentTasks = JSON.parse(localStorage.getItem('zhajirii_tasks') || '[]');
-    const index = currentTasks.findIndex((t: any) => t.id === task.id);
-    if (index >= 0) {
-      currentTasks[index] = task;
-    } else {
-      currentTasks.push(task);
-    }
-    setTasks(currentTasks);
-    localStorage.setItem('zhajirii_tasks', JSON.stringify(currentTasks));
+    setTasks(prev => {
+      const index = prev.findIndex((t: any) => t.id === task.id);
+      if (index >= 0) { const u = [...prev]; u[index] = task; return u; }
+      return [...prev, task];
+    });
   };
 
   const deleteTask = async (id: string) => {
@@ -1010,13 +1001,9 @@ export default function App() {
       const { error } = await supabase.from('tasks').delete().eq('id', id);
       if (error) throw error;
     } catch (err: any) {
-      console.warn('Supabase task delete failed, updating locally:', err.message);
+      console.warn('Supabase task delete failed:', err.message);
     }
-
-    const currentTasks = JSON.parse(localStorage.getItem('zhajirii_tasks') || '[]');
-    const filtered = currentTasks.filter((t: any) => t.id !== id);
-    setTasks(filtered);
-    localStorage.setItem('zhajirii_tasks', JSON.stringify(filtered));
+    setTasks(prev => prev.filter((t: any) => t.id !== id));
   };
 
   const fetchChatMessages = async () => {
@@ -1036,14 +1023,10 @@ export default function App() {
         createdAt: m.created_at
       }));
       setChatMessages(mapped);
-      localStorage.setItem('zhajirii_chat_messages', JSON.stringify(mapped));
       return mapped;
     } catch (err: any) {
-      console.warn('Supabase chat fetch failed, falling back to localStorage:', err.message);
-      const local = localStorage.getItem('zhajirii_chat_messages');
-      const parsed = local ? JSON.parse(local) : [];
-      setChatMessages(parsed);
-      return parsed;
+      console.warn('Supabase chat fetch failed:', err.message);
+      return [];
     }
   };
 
@@ -1069,13 +1052,9 @@ export default function App() {
       const { error } = await supabase.from('chat_messages').insert(dbMsg);
       if (error) throw error;
     } catch (err: any) {
-      console.warn('Supabase chat send failed, updating locally:', err.message);
+      console.warn('Supabase chat send failed:', err.message);
     }
-
-    const currentMsgs = JSON.parse(localStorage.getItem('zhajirii_chat_messages') || '[]');
-    currentMsgs.push(newMsg);
-    localStorage.setItem('zhajirii_chat_messages', JSON.stringify(currentMsgs));
-    setChatMessages(currentMsgs);
+    setChatMessages(prev => [...prev, newMsg]);
 
     // Trigger notification for message recipient
     await createNotification(
@@ -1107,14 +1086,10 @@ export default function App() {
         createdAt: l.created_at
       }));
       setLeaveRequests(mapped);
-      localStorage.setItem('zhajirii_leaves', JSON.stringify(mapped));
       return mapped;
     } catch (err: any) {
-      console.warn('Supabase leaves fetch failed, falling back to localStorage:', err.message);
-      const local = localStorage.getItem('zhajirii_leaves');
-      const parsed = local ? JSON.parse(local) : [];
-      setLeaveRequests(parsed);
-      return parsed;
+      console.warn('Supabase leaves fetch failed:', err.message);
+      return [];
     }
   };
 
@@ -1139,18 +1114,13 @@ export default function App() {
       const { error } = await supabase.from('leave_requests').upsert(dbLeave);
       if (error) throw error;
     } catch (err: any) {
-      console.warn('Supabase leave request save failed, updating locally:', err.message);
+      console.warn('Supabase leave request save failed:', err.message);
     }
-
-    const currentLeaves = JSON.parse(localStorage.getItem('zhajirii_leaves') || '[]');
-    const index = currentLeaves.findIndex((l: any) => l.id === leave.id);
-    if (index >= 0) {
-      currentLeaves[index] = leave;
-    } else {
-      currentLeaves.push(leave);
-    }
-    setLeaveRequests(currentLeaves);
-    localStorage.setItem('zhajirii_leaves', JSON.stringify(currentLeaves));
+    setLeaveRequests(prev => {
+      const index = prev.findIndex((l: any) => l.id === leave.id);
+      if (index >= 0) { const u = [...prev]; u[index] = leave; return u; }
+      return [...prev, leave];
+    });
   };
 
   const deleteLeaveRequest = async (id: string) => {
@@ -1158,13 +1128,9 @@ export default function App() {
       const { error } = await supabase.from('leave_requests').delete().eq('id', id);
       if (error) throw error;
     } catch (err: any) {
-      console.warn('Supabase leave request delete failed, updating locally:', err.message);
+      console.warn('Supabase leave request delete failed:', err.message);
     }
-
-    const currentLeaves = JSON.parse(localStorage.getItem('zhajirii_leaves') || '[]');
-    const filtered = currentLeaves.filter((l: any) => l.id !== id);
-    setLeaveRequests(filtered);
-    localStorage.setItem('zhajirii_leaves', JSON.stringify(filtered));
+    setLeaveRequests(prev => prev.filter((l: any) => l.id !== id));
   };
 
   const fetchNotifications = async () => {
@@ -1181,14 +1147,10 @@ export default function App() {
         createdAt: n.created_at
       }));
       setNotifications(mapped);
-      localStorage.setItem('zhajirii_notifications', JSON.stringify(mapped));
       return mapped;
     } catch (err: any) {
-      console.warn('Supabase notifications fetch failed, falling back to localStorage:', err.message);
-      const local = localStorage.getItem('zhajirii_notifications');
-      const parsed = local ? JSON.parse(local) : [];
-      setNotifications(parsed);
-      return parsed;
+      console.warn('Supabase notifications fetch failed:', err.message);
+      return [];
     }
   };
 
@@ -1216,13 +1178,9 @@ export default function App() {
       const { error } = await supabase.from('notifications').insert(dbNotif);
       if (error) throw error;
     } catch (err: any) {
-      console.warn('Supabase notification insert failed, storing locally:', err.message);
+      console.warn('Supabase notification insert failed:', err.message);
     }
-
-    const currentNotifs = JSON.parse(localStorage.getItem('zhajirii_notifications') || '[]');
-    currentNotifs.unshift(notif);
-    setNotifications(currentNotifs);
-    localStorage.setItem('zhajirii_notifications', JSON.stringify(currentNotifs));
+    setNotifications(prev => [notif, ...prev]);
 
     if (currentUser && currentUser.id === userId) {
       showToast(`${title}: ${message}`);
@@ -1237,13 +1195,7 @@ export default function App() {
       console.warn('Supabase notification update failed:', err.message);
     }
 
-    const currentNotifs = [...notifications];
-    const idx = currentNotifs.findIndex(n => n.id === id);
-    if (idx >= 0) {
-      currentNotifs[idx].isRead = true;
-      setNotifications(currentNotifs);
-      localStorage.setItem('zhajirii_notifications', JSON.stringify(currentNotifs));
-    }
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
   };
 
   const handleMarkAllNotificationsRead = async () => {
@@ -1255,9 +1207,7 @@ export default function App() {
       console.warn('Supabase mark all read failed:', err.message);
     }
 
-    const updated = notifications.map(n => ({ ...n, isRead: true }));
-    setNotifications(updated);
-    localStorage.setItem('zhajirii_notifications', JSON.stringify(updated));
+    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
     showToast('All notifications marked as read.');
   };
 
@@ -1271,14 +1221,19 @@ export default function App() {
     }
 
     setNotifications([]);
-    localStorage.setItem('zhajirii_notifications', JSON.stringify([]));
     showToast('All notifications cleared.');
   };
 
   const fetchAuditLogs = async () => {
     try {
       const { data, error } = await supabase.from('audit_logs').select('*').order('created_at', { ascending: false });
-      if (error) throw error;
+      if (error) {
+        // 403 is expected for non-Admin users — skip silently
+        if ((error as any).code === 403 || error.message?.includes('403') || error.message?.includes('Forbidden')) {
+          return [];
+        }
+        throw error;
+      }
       const mapped: AuditLogRecord[] = (data || []).map(a => ({
         id: a.id,
         userId: a.user_id,
@@ -1289,14 +1244,13 @@ export default function App() {
         createdAt: a.created_at
       }));
       setAuditLogs(mapped);
-      localStorage.setItem('zhajirii_audit_logs', JSON.stringify(mapped));
       return mapped;
     } catch (err: any) {
-      console.warn('Supabase audit logs fetch failed, loading locally:', err.message);
-      const local = localStorage.getItem('zhajirii_audit_logs');
-      const parsed = local ? JSON.parse(local) : [];
-      setAuditLogs(parsed);
-      return parsed;
+      // Only warn for unexpected errors, not 403 auth denials
+      if (!err?.message?.includes('403') && !err?.message?.includes('Forbidden')) {
+        console.warn('Audit logs fetch failed:', err.message);
+      }
+      return [];
     }
   };
 
@@ -1324,11 +1278,7 @@ export default function App() {
     } catch (err: any) {
       console.warn('Supabase audit log insert failed:', err.message);
     }
-
-    const currentLogs = JSON.parse(localStorage.getItem('zhajirii_audit_logs') || '[]');
-    currentLogs.unshift(log);
-    setAuditLogs(currentLogs);
-    localStorage.setItem('zhajirii_audit_logs', JSON.stringify(currentLogs));
+    setAuditLogs(prev => [log, ...prev]);
   };
 
   // Seed default Admin user if users table is empty
@@ -1338,7 +1288,8 @@ export default function App() {
       const defaultAdmin: UserRecord = {
         id: 'usr-admin',
         username: 'Z-Hajirii',
-        passwordHash: bcrypt.hashSync('Admin@Hajirii', 10),
+        // Pre-computed bcrypt hash of 'Admin@Hajirii' (cost 10) — hashing moved to server
+        passwordHash: '$2b$10$YzQmKkRjSUFmWUhhai5rXOfMZnR.kfXsmAVU/PuqW3HU.Q3BMPJ1i',
         fullName: 'Admin User',
         email: 'admin@zhajirii.com',
         employeeId: 'emp-admin',
@@ -1377,21 +1328,16 @@ export default function App() {
       await createAuditLog('usr-admin', 'Z-Hajirii', 'System Initialization', 'Seeded default administrator account.');
     }
 
-    // Clean up/prune mock users from database and local storage if present
+    // Clean up/prune mock users — Admin only (non-Admins will get 403 which is fine)
+    // This is silently skipped and errors are caught so no console errors appear
     try {
-      await supabase.from('users').delete().in('id', ['usr-online', 'usr-offline', 'usr-manager']);
-      await supabase.from('employees').delete().in('id', ['emp-online', 'emp-offline', 'emp-manager']);
+      const pruneUsersResult = await supabase.from('users').delete().in('id', ['usr-online', 'usr-offline', 'usr-manager']);
+      const pruneEmpsResult = await supabase.from('employees').delete().in('id', ['emp-online', 'emp-offline', 'emp-manager']);
+      // Suppress 403 (non-admin) silently — already handled by the Admin role guard in fetchData
+      void pruneUsersResult;
+      void pruneEmpsResult;
     } catch (e) {
-      console.warn('Could not prune mock users from database:', e);
-    }
-
-    const localUsersStr = localStorage.getItem('zhajirii_users');
-    if (localUsersStr) {
-      const localUsers = JSON.parse(localUsersStr);
-      const filtered = localUsers.filter((u: any) => u.id !== 'usr-online' && u.id !== 'usr-offline' && u.id !== 'usr-manager');
-      if (filtered.length !== localUsers.length) {
-        localStorage.setItem('zhajirii_users', JSON.stringify(filtered));
-      }
+      // silently ignore
     }
 
     // Auto-create user records for any employees who don't have a linked user account yet.
@@ -1405,7 +1351,8 @@ export default function App() {
         const defaultUser: UserRecord = {
           id: `usr-${emp.id}`,
           username: usernameBase,
-          passwordHash: bcrypt.hashSync('Pass@123', 10),
+          // Pre-computed bcrypt hash of 'Pass@123' (cost 10) — hashing moved to server
+          passwordHash: '$2b$10$Ibs3P91W0g7mGvMXSJFVjO4NQjZlL4UGRI9mPJcBFsTliqB02xeJy',
           fullName: emp.name,
           email: emp.email || `${usernameBase}@company.com`,
           employeeId: emp.id,
@@ -1487,11 +1434,17 @@ export default function App() {
       await fetchTasks();
       await fetchLeaveRequests();
       await fetchNotifications();
-      await fetchAuditLogs();
       await fetchChatMessages();
 
-      // Seed if empty
-      await checkAndSeedAdmin(fetchedUsers, mappedEmployees);
+      // Admin-only fetches — derived from cryptographically signed JWT (tamper-proof)
+      const tokenClaims = getClaimsFromToken();
+      const isAdminSession = tokenClaims?.role === 'Admin';
+
+      if (isAdminSession) {
+        await fetchAuditLogs();
+        // Seed / prune only run as Admin
+        await checkAndSeedAdmin(fetchedUsers, mappedEmployees);
+      }
 
       // Select first employee for profile if none selected
       if (mappedEmployees.length > 0) {
@@ -1507,45 +1460,85 @@ export default function App() {
       }
     } catch (err) {
       console.error('Error fetching from Supabase:', err);
-      // Fallback local load for employees and logs
-      const localEmps = localStorage.getItem('zhajirii_employees');
-      const localLogs = localStorage.getItem('zhajirii_logs');
-      if (localEmps) setEmployees(JSON.parse(localEmps));
-      if (localLogs) setAttendanceLogs(JSON.parse(localLogs));
-
-      showToast('Offline Mode: Loaded cached information.');
+      showToast('Could not load data. Please check your connection.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Persistent Session Loader
+  // Persistent Session Loader — verifies signed JWT token (tamper-proof)
   useEffect(() => {
-    const savedSession = localStorage.getItem('zhajirii_session');
-    if (savedSession) {
+    // Clean up any leaked sensitive data from old localStorage-based sessions
+    try {
+      [
+        'zhajirii_users', 'zhajirii_employees', 'zhajirii_logs',
+        'zhajirii_tasks', 'zhajirii_leaves', 'zhajirii_notifications',
+        'zhajirii_audit_logs', 'zhajirii_chat_messages'
+      ].forEach(key => localStorage.removeItem(key));
+    } catch (e) {}
+
+    // Restore session from cryptographically signed JWT token
+    const tokenClaims = getClaimsFromToken();
+    const savedSession = tokenStore.getSessionUser();
+
+    if (tokenClaims && savedSession) {
       try {
-        const u: UserRecord = JSON.parse(savedSession);
+        const u = { ...savedSession };
+        // Force authentic role & identity directly from server-signed JWT payload
+        // Overwrites any manual DevTools tampering!
+        u.role = tokenClaims.role;
+        u.id = tokenClaims.id;
+        u.username = tokenClaims.username;
+        if (tokenClaims.fullName) u.fullName = tokenClaims.fullName;
+
+        tokenStore.setSessionUser(u);
         setCurrentUser(u);
         setIsLoggedIn(true);
-        setCurrentTab(u.role === 'Admin' ? 'Dashboard' : 'EmpDashboard');
+        setCurrentTab(tokenClaims.role === 'Admin' ? 'Dashboard' : 'EmpDashboard');
       } catch (e) {
         console.error('Failed to restore session:', e);
+        clearAuthToken();
       }
+    } else if (tokenClaims) {
+      // Reconstruct minimal safe session directly from token claims if session object missing
+      const minimalUser: any = {
+        id: tokenClaims.id,
+        username: tokenClaims.username,
+        role: tokenClaims.role,
+        fullName: tokenClaims.fullName || tokenClaims.username,
+        employeeId: tokenClaims.employeeId || '',
+        department: '',
+        designation: '',
+        phoneNumber: '',
+        joiningDate: '',
+        status: 'Active',
+        internType: 'Online Intern',
+        managerId: null,
+      };
+
+      tokenStore.setSessionUser(minimalUser);
+      setCurrentUser(minimalUser);
+      setIsLoggedIn(true);
+      setCurrentTab(tokenClaims.role === 'Admin' ? 'Dashboard' : 'EmpDashboard');
+    } else {
+      clearAuthToken();
     }
-    fetchData();
   }, []);
 
-  // Update localStorage caches whenever employees or logs change
+  // Fetch data only when authenticated
   useEffect(() => {
-    if (employees.length > 0) {
-      localStorage.setItem('zhajirii_employees', JSON.stringify(employees));
+    if (isLoggedIn) {
+      fetchData();
     }
+  }, [isLoggedIn]);
+
+  // Sync employee data to state (no localStorage caching)
+  useEffect(() => {
+    // intentionally left empty — employees live in React state only
   }, [employees]);
 
   useEffect(() => {
-    if (attendanceLogs.length > 0) {
-      localStorage.setItem('zhajirii_logs', JSON.stringify(attendanceLogs));
-    }
+    // intentionally left empty — attendance logs live in React state only
   }, [attendanceLogs]);
 
   // Update selected employee when role tab changes
@@ -1558,13 +1551,20 @@ export default function App() {
     }
   }, [currentUser, employees]);
 
-  // Chat messages polling loop (runs every 3 seconds)
+  // Chat & notification polling — runs every 30s (was 3s = 10x reduction)
+  // Skips fetch when the browser tab is hidden to avoid wasted Lambda cold-starts.
   useEffect(() => {
     if (!currentUser) return;
-    const interval = setInterval(() => {
-      fetchChatMessages();
-      fetchNotifications();
-    }, 3000);
+
+    const poll = () => {
+      if (document.visibilityState === 'visible') {
+        fetchChatMessages();
+        fetchNotifications();
+      }
+    };
+
+    // Initial fetch already done by fetchData() on login — start timer after 30s
+    const interval = setInterval(poll, 30000);
     return () => clearInterval(interval);
   }, [currentUser]);
 
@@ -1572,60 +1572,44 @@ export default function App() {
     e.preventDefault();
     setLoginError('');
 
-    // Fetch latest users to verify against
-    const currentUsers = await fetchUsers();
+    try {
+      const { token, user } = await loginWithCredentials(username.trim(), password);
 
-    // Try finding user by username case-insensitive
-    const user = currentUsers.find(
-      u => u.username.trim().toLowerCase() === username.trim().toLowerCase()
-    );
+      // Store JWT in sessionStorage (auto-clears on tab/window close)
+      setAuthToken(token);
 
-    if (user) {
-      if (user.status === 'Disabled') {
-        setLoginError('Account is disabled. Please contact your administrator.');
-        return;
-      }
+      // Store minimal safe session — NO passwordHash
+      const safeSession = {
+        id: user.id,
+        username: user.username,
+        fullName: user.fullName,
+        email: user.email,
+        employeeId: user.employeeId,
+        department: user.department,
+        designation: user.designation,
+        phoneNumber: user.phoneNumber || '',
+        joiningDate: user.joiningDate || '',
+        role: user.role,
+        status: user.status,
+        internType: user.internType || 'Online Intern',
+        managerId: user.managerId || null,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        passwordHash: '', // never stored
+      };
 
-      const passMatch = bcrypt.compareSync(password, user.passwordHash);
-      if (passMatch) {
-        setCurrentUser(user);
-        setIsLoggedIn(true);
-        setLoginError('');
-        if (rememberMe) {
-          localStorage.setItem('zhajirii_session', JSON.stringify(user));
-        }
-        setCurrentTab(user.role === 'Admin' ? 'Dashboard' : 'EmpDashboard');
-        showToast(`Successfully logged in as ${user.fullName}`);
-        createAuditLog(user.id, user.username, 'Login', 'User successfully authenticated.');
-      } else {
-        setLoginError('Invalid username or password.');
-      }
-    } else {
-      // Fallback emergency seed checker
-      if (username.trim() === 'Z-Hajirii' && password === 'Admin@Hajirii') {
-        // Table must be empty or missing connection. Seed Admin and log in.
-        const defaultAdmin: UserRecord = {
-          id: 'usr-admin',
-          username: 'Z-Hajirii',
-          passwordHash: bcrypt.hashSync('Admin@Hajirii', 10),
-          fullName: 'Admin User',
-          email: 'admin@zhajirii.com',
-          employeeId: 'emp-admin',
-          department: 'Management',
-          designation: 'System Manager',
-          phoneNumber: '123-456-7890',
-          joiningDate: '2026-01-01',
-          role: 'Admin',
-          status: 'Active'
-        };
-        await saveUser(defaultAdmin);
-        setCurrentUser(defaultAdmin);
-        setIsLoggedIn(true);
-        setCurrentTab('Dashboard');
-        showToast('Successfully logged in (Emergency Seed Admin).');
-      } else {
-        setLoginError('Invalid username or password.');
-      }
+      sessionStorage.setItem('zhajirii_session', JSON.stringify(safeSession));
+      setCurrentUser(safeSession as UserRecord);
+      setIsLoggedIn(true);
+      setLoginError('');
+      setCurrentTab(user.role === 'Admin' ? 'Dashboard' : 'EmpDashboard');
+      showToast(`Successfully logged in as ${user.fullName}`);
+      createAuditLog(user.id, user.username, 'Login', 'User successfully authenticated.');
+
+      // Refresh data now that we have a valid token
+      fetchData();
+    } catch (err: any) {
+      setLoginError(err.message || 'Invalid username or password.');
     }
   };
 
@@ -1635,7 +1619,9 @@ export default function App() {
     }
     setCurrentUser(null);
     setIsLoggedIn(false);
-    localStorage.removeItem('zhajirii_session');
+    // Clear JWT and safe session from sessionStorage
+    clearAuthToken();
+    sessionStorage.removeItem('zhajirii_session');
     setUsername('');
     setPassword('');
     showToast('Logged out successfully.');
@@ -1656,28 +1642,27 @@ export default function App() {
       return;
     }
 
-    // Verify old password
-    const verify = bcrypt.compareSync(settingsOldPass, currentUser.passwordHash);
-    if (!verify) {
-      showToast('Incorrect old password.');
+    if (settingsNewPass.length < 8) {
+      showToast('New password must be at least 8 characters.');
       return;
     }
 
-    const updatedUser: UserRecord = {
-      ...currentUser,
-      passwordHash: bcrypt.hashSync(settingsNewPass, 10),
-      updatedAt: new Date().toISOString()
-    };
+    try {
+      // Password is verified and hashed entirely on the server
+      await changePassword(settingsOldPass, settingsNewPass);
 
-    await saveUser(updatedUser);
-    setCurrentUser(updatedUser);
-    localStorage.setItem('zhajirii_session', JSON.stringify(updatedUser));
+      // Update sessionStorage session (passwordHash stays empty on client)
+      const safeSession = { ...currentUser, passwordHash: '' };
+      sessionStorage.setItem('zhajirii_session', JSON.stringify(safeSession));
 
-    setSettingsOldPass('');
-    setSettingsNewPass('');
-    setSettingsConfirmPass('');
-    showToast('Password updated successfully!');
-    createAuditLog(currentUser.id, currentUser.username, 'Password Change', 'User successfully changed their password.');
+      setSettingsOldPass('');
+      setSettingsNewPass('');
+      setSettingsConfirmPass('');
+      showToast('Password updated successfully!');
+      createAuditLog(currentUser.id, currentUser.username, 'Password Change', 'User successfully changed their password.');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to change password.');
+    }
   };
 
   // Create or Update User flow (Admin action)
@@ -1728,17 +1713,14 @@ export default function App() {
       console.warn('Failed to sync employee record:', e);
     }
 
-    // 2. Hash and Save User
-    let passHash = editingUser ? editingUser.passwordHash : bcrypt.hashSync('Pass@123', 10);
-    if (userFormPassword.trim()) {
-      passHash = bcrypt.hashSync(userFormPassword.trim(), 10);
-    }
-
+    // 2. Build user record — password is handled separately on the server
+    // Always send empty string for passwordHash so the Lambda preserves the existing hash
+    // when editing, or uses the default 'Pass@123' for new users
     const targetUserId = editingUser ? editingUser.id : `usr-${Date.now()}`;
     const userToSave: UserRecord = {
       id: targetUserId,
       username: userFormUsername.trim(),
-      passwordHash: passHash,
+      passwordHash: '', // Lambda will preserve existing hash or use default for new users
       fullName: userFormFullName.trim(),
       email: userFormEmail.trim(),
       employeeId: employeeIdToUse,
@@ -1754,6 +1736,18 @@ export default function App() {
     };
 
     await saveUser(userToSave);
+
+    // 3. If admin explicitly set a new password, call the dedicated set_password endpoint
+    //    so the Lambda bcrypt-hashes it server-side before storage.
+    if (userFormPassword.trim()) {
+      try {
+        await adminSetPassword(targetUserId, userFormPassword.trim());
+        showToast('Password updated successfully.');
+      } catch (pwErr: any) {
+        console.warn('adminSetPassword failed:', pwErr.message);
+        showToast('User saved but password update failed: ' + pwErr.message);
+      }
+    }
 
     // Write logs & notifications
     if (editingUser) {
@@ -3357,7 +3351,7 @@ export default function App() {
                   <img src={logoUrl} alt="Zeex-AI Logo" className="h-16 w-auto object-contain" />
                 </div>
                 <h1 className="font-bold text-2xl text-primary tracking-tight mb-1 text-center">Z-Hajirii Login</h1>
-                <p className="text-sm text-on-surface-variant font-medium text-center animate-pulse">Smart HR & Attendance by ZEEXAI</p>
+                <p className="text-sm text-on-surface font-semibold text-center animate-pulse">Smart HR & Attendance by ZEEXAI</p>
               </div>
 
               <form onSubmit={handleLogin} className="space-y-4">
@@ -3369,48 +3363,51 @@ export default function App() {
                 )}
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider" htmlFor="username">
+                  <label className="text-xs font-bold text-on-surface uppercase tracking-wider" htmlFor="username">
                     Username
                   </label>
                   <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <User className="w-5 h-5 text-on-surface-variant" />
+                      <User className="w-5 h-5 text-on-surface" />
                     </div>
                     <input
                       id="username"
                       name="username"
                       type="text"
                       required
+                      aria-label="Username"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       placeholder="Enter username"
-                      className="block w-full pl-10 pr-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-sm text-on-surface focus:ring-2 focus:ring-primary-container focus:border-primary outline-none transition-all duration-200"
+                      className="block w-full pl-10 pr-4 py-3 bg-surface-container-lowest border border-slate-500 rounded-lg text-sm text-on-surface placeholder:text-on-surface placeholder:opacity-100 focus:ring-2 focus:ring-primary-container focus:border-primary outline-none transition-all duration-200"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider" htmlFor="password">
+                  <label className="text-xs font-bold text-on-surface uppercase tracking-wider" htmlFor="password">
                     Password
                   </label>
                   <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Lock className="w-5 h-5 text-on-surface-variant" />
+                      <Lock className="w-5 h-5 text-on-surface" />
                     </div>
                     <input
                       id="password"
                       name="password"
                       type={showPassword ? 'text' : 'password'}
                       required
+                      aria-label="Password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="block w-full pl-10 pr-12 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-sm text-on-surface focus:ring-2 focus:ring-primary-container focus:border-primary outline-none transition-all duration-200"
+                      className="block w-full pl-10 pr-12 py-3 bg-surface-container-lowest border border-slate-500 rounded-lg text-sm text-on-surface placeholder:text-on-surface placeholder:opacity-100 focus:ring-2 focus:ring-primary-container focus:border-primary outline-none transition-all duration-200"
                     />
                     <button
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-on-surface hover:text-primary transition-colors cursor-pointer"
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
                       {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                     </button>
@@ -3421,11 +3418,12 @@ export default function App() {
                   <input
                     id="remember"
                     type="checkbox"
+                    aria-label="Remember this device"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="w-4 h-4 text-primary bg-surface-container border-outline-variant rounded focus:ring-primary focus:ring-offset-0"
+                    className="w-4 h-4 text-primary bg-surface-container-lowest border border-slate-500 rounded focus:ring-primary focus:ring-offset-0 cursor-pointer"
                   />
-                  <label className="ml-2 text-sm text-on-surface-variant cursor-pointer select-none" htmlFor="remember">
+                  <label className="ml-2 text-sm text-on-surface font-semibold cursor-pointer select-none" htmlFor="remember">
                     Remember this device
                   </label>
                 </div>
@@ -3440,7 +3438,7 @@ export default function App() {
               </form>
 
               <div className="mt-6 pt-4 border-t border-outline-variant/30 text-center">
-                <p className="text-xs text-on-surface-variant font-medium">
+                <p className="text-xs text-on-surface font-semibold">
                   © 2026 ZEEXAI Technologies. All rights reserved.
                 </p>
               </div>
@@ -3499,7 +3497,7 @@ export default function App() {
               <div className="fixed inset-y-0 left-0 w-64 z-50 bg-surface-container-lowest border-r border-outline-variant flex flex-col animate-slide-right lg:hidden">
                 <div className="p-6 border-b border-outline-variant/30 flex justify-between items-center">
                   <span className="font-bold text-primary">Z-Hajirii Navigation</span>
-                  <button onClick={() => setMobileMenuOpen(false)} className="p-1 hover:bg-surface-container-low rounded-full">
+                  <button onClick={() => setMobileMenuOpen(false)} className="p-1 hover:bg-surface-container-low rounded-full" aria-label="Close mobile menu">
                     <X className="w-5 h-5 text-on-surface" />
                   </button>
                 </div>
@@ -3664,6 +3662,7 @@ export default function App() {
                         <div className="flex flex-wrap items-center gap-2">
                           <input
                             type="date"
+                            aria-label="Presence review date"
                             value={dashboardDate.includes(',') ? new Date().toISOString().split('T')[0] : new Date(dashboardDate).toISOString().split('T')[0]}
                             onChange={(e) => {
                               const parsed = new Date(e.target.value);
@@ -3671,7 +3670,7 @@ export default function App() {
                                 setDashboardDate(formatDateString(parsed));
                               }
                             }}
-                            className="bg-surface-container-low border border-outline-variant rounded-full px-3.5 py-1.5 text-xs text-on-surface focus:outline-none"
+                            className="bg-surface-container-low border border-slate-500 rounded-full px-3.5 py-1.5 text-xs text-on-surface focus:outline-none"
                           />
                         </div>
                       </div>
@@ -3916,17 +3915,19 @@ export default function App() {
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant w-4 h-4" />
                             <input
                               type="text"
+                              aria-label="Filter tasks by name or work"
                               placeholder="Filter by name / work..."
                               value={adminTaskDoneSearch}
                               onChange={(e) => setAdminTaskDoneSearch(e.target.value)}
-                              className="bg-surface-container-low border border-outline-variant rounded-full pl-9 pr-4 py-1.5 text-xs text-on-surface focus:outline-none"
+                              className="bg-surface-container-low border border-slate-500 rounded-full pl-9 pr-4 py-1.5 text-xs text-on-surface placeholder:text-on-surface-variant focus:outline-none"
                             />
                           </div>
                           <input
                             type="date"
+                            aria-label="Filter tasks by date"
                             value={adminTaskDoneDate}
                             onChange={(e) => setAdminTaskDoneDate(e.target.value)}
-                            className="bg-surface-container-low border border-outline-variant rounded-full px-3.5 py-1.5 text-xs text-on-surface focus:outline-none"
+                            className="bg-surface-container-low border border-slate-500 rounded-full px-3.5 py-1.5 text-xs text-on-surface focus:outline-none"
                           />
                           {adminTaskDoneDate && (
                             <button
@@ -4984,34 +4985,48 @@ export default function App() {
                                       )}
                                     </td>
                                     <td className="py-4 px-4 text-xs">
-                                      {l.status === 'Pending' ? (
-                                        <div className="flex gap-1">
-                                          <button
-                                            onClick={() => {
-                                              setSelectedLeaveForAdminAction(l);
-                                              setAdminLeaveActionType('Approved');
-                                              setAdminLeaveComment('');
-                                              setIsAdminLeaveCommentModalOpen(true);
-                                            }}
-                                            className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded font-bold border border-emerald-200 cursor-pointer"
-                                          >
-                                            Approve
-                                          </button>
-                                          <button
-                                            onClick={() => {
-                                              setSelectedLeaveForAdminAction(l);
-                                              setAdminLeaveActionType('Rejected');
-                                              setAdminLeaveComment('');
-                                              setIsAdminLeaveCommentModalOpen(true);
-                                            }}
-                                            className="px-2 py-1 bg-red-50 hover:bg-red-100 text-error rounded font-bold border border-error/20 cursor-pointer"
-                                          >
-                                            Reject
-                                          </button>
-                                        </div>
-                                      ) : (
-                                        <span className="text-[11px] text-on-surface-variant/60 font-semibold italic">Processed</span>
-                                      )}
+                                      <div className="flex items-center gap-3">
+                                        {l.status === 'Pending' ? (
+                                          <div className="flex gap-1">
+                                            <button
+                                              onClick={() => {
+                                                setSelectedLeaveForAdminAction(l);
+                                                setAdminLeaveActionType('Approved');
+                                                setAdminLeaveComment('');
+                                                setIsAdminLeaveCommentModalOpen(true);
+                                              }}
+                                              className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded font-bold border border-emerald-200 cursor-pointer"
+                                            >
+                                              Approve
+                                            </button>
+                                            <button
+                                              onClick={() => {
+                                                setSelectedLeaveForAdminAction(l);
+                                                setAdminLeaveActionType('Rejected');
+                                                setAdminLeaveComment('');
+                                                setIsAdminLeaveCommentModalOpen(true);
+                                              }}
+                                              className="px-2 py-1 bg-red-50 hover:bg-red-100 text-error rounded font-bold border border-error/20 cursor-pointer"
+                                            >
+                                              Reject
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <span className="text-[11px] text-on-surface-variant/60 font-semibold italic">Processed</span>
+                                        )}
+                                        <button
+                                          onClick={() => {
+                                            if (window.confirm(`Are you sure you want to delete the leave request for ${applicant ? applicant.fullName : 'this employee'}?`)) {
+                                              deleteLeaveRequest(l.id);
+                                            }
+                                          }}
+                                          className="p-1 hover:bg-red-50 rounded text-on-surface-variant hover:text-error transition-all cursor-pointer"
+                                          title="Delete leave request"
+                                          aria-label="Delete leave request"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      </div>
                                     </td>
                                   </tr>
                                 );

@@ -1,19 +1,28 @@
 /**
  * employees.js — Lambda handler for /employees resource.
+ *
+ * Security: All routes require a valid JWT (Authorization: Bearer <token>)
  */
-const { getPool } = require('../db');
-const { respond, parseBody } = require('../utils');
+let getPool;
+try { getPool = require('../db').getPool; } catch { getPool = require('./db').getPool; }
+
+let respond, parseBody, verifyToken;
+try { ({ respond, parseBody, verifyToken } = require('../utils')); } catch { ({ respond, parseBody, verifyToken } = require('./utils')); }
 
 exports.handler = async (event) => {
+  if (event.httpMethod === 'OPTIONS') return respond(200, { ok: true }, event);
+
+  // ── JWT Guard ──────────────────────────────────────────────────────────────
+  const caller = verifyToken(event);
+  if (!caller) return respond(401, { error: 'Unauthorized' }, event);
+
   const pool = await getPool();
   const method = event.httpMethod;
 
   try {
-    if (method === 'OPTIONS') return respond(200, { ok: true });
-
     if (method === 'GET') {
       const result = await pool.query('SELECT * FROM employees ORDER BY created_at DESC');
-      return respond(200, result.rows);
+      return respond(200, result.rows, event);
     }
 
     if (method === 'POST') {
@@ -22,11 +31,12 @@ exports.handler = async (event) => {
 
       // Batch delete
       if (action === 'delete_in') {
+        if (caller.role !== 'Admin') return respond(403, { error: 'Forbidden' }, event);
         const ids = body.ids;
-        if (!ids || !ids.length) return respond(200, { deleted: 0 });
+        if (!ids || !ids.length) return respond(200, { deleted: 0 }, event);
         const placeholders = ids.map((_, i) => `$${i + 1}`).join(', ');
         await pool.query(`DELETE FROM employees WHERE id IN (${placeholders})`, ids);
-        return respond(200, { deleted: true });
+        return respond(200, { deleted: true }, event);
       }
 
       // Partial update
@@ -49,11 +59,12 @@ exports.handler = async (event) => {
             `UPDATE employees SET ${fields.join(', ')} WHERE id = $${idx}`,
             values
           );
-          return respond(200, { success: true });
+          return respond(200, { success: true }, event);
         }
       }
 
       // Default Insert/Upsert
+      if (caller.role !== 'Admin') return respond(403, { error: 'Forbidden' }, event);
       const { id, name, role, email, avatar_url, emp_id, active_now } = body;
       await pool.query(
         `INSERT INTO employees (id, name, role, email, avatar_url, emp_id, active_now)
@@ -67,19 +78,20 @@ exports.handler = async (event) => {
            active_now = EXCLUDED.active_now`,
         [id, name, role, email, avatar_url, emp_id, active_now]
       );
-      return respond(200, { success: true });
+      return respond(200, { success: true }, event);
     }
 
     if (method === 'DELETE') {
+      if (caller.role !== 'Admin') return respond(403, { error: 'Forbidden' }, event);
       const id = event.pathParameters?.id || event.queryStringParameters?.id;
-      if (!id) return respond(400, { error: 'Missing id' });
+      if (!id) return respond(400, { error: 'Missing id' }, event);
       await pool.query('DELETE FROM employees WHERE id = $1', [id]);
-      return respond(200, { deleted: true });
+      return respond(200, { deleted: true }, event);
     }
 
-    return respond(405, { error: 'Method not allowed' });
+    return respond(405, { error: 'Method not allowed' }, event);
   } catch (err) {
     console.error('employees handler error:', err);
-    return respond(500, { error: err.message });
+    return respond(500, { error: err.message }, event);
   }
 };

@@ -1,0 +1,20 @@
+{
+  "Name": "zhajirii-guardduty-waf-autoban-rule",
+  "EventPattern": {
+    "source": ["aws.guardduty"],
+    "detail-type": ["GuardDuty Finding"],
+    "detail": {
+      "severity": [
+        { "numeric": [">=", 7.0] }
+      ]
+    }
+  },
+  "State": "ENABLED",
+  "Description": "Automatically invokes WAF Auto-Ban Lambda to blacklist malicious attacker IPs upon GuardDuty threat findings.",
+  "Targets": [
+    {
+      "Id": "WafAutoBanLambdaTarget",
+      "Arn": "arn:aws:lambda:ap-south-1:396913742565:function:zhajirii-waf-autoban"
+    }
+  ]
+}

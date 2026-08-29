@@ -45,7 +45,7 @@ export default function Sidebar({
     <aside className="hidden lg:flex flex-col h-screen fixed left-0 top-0 w-64 bg-surface-container-lowest shadow-sm border-r border-outline-variant z-50">
       <div className="p-6 flex flex-col items-center text-center gap-2 border-b border-outline-variant/30 bg-surface-container-low/10">
         <div className="bg-white p-2 rounded-xl border border-outline-variant shadow-sm flex items-center justify-center">
-          <img src={logoUrl} alt="Zeex-AI Logo" className="w-20 h-auto object-contain" />
+          <img src={logoUrl} alt="Zeex-AI Logo" width="80" height="80" decoding="async" fetchPriority="high" className="w-20 h-auto object-contain" />
         </div>
         <div>
           <h2 className="text-sm font-bold text-primary tracking-tight">Z-Hajirii</h2>
@@ -313,6 +313,9 @@ export default function Sidebar({
             <img
               src={currentUser.avatarUrl}
               alt={currentUser.fullName}
+              width="40"
+              height="40"
+              decoding="async"
               className="w-10 h-10 rounded-full object-cover border border-primary/20"
             />
           ) : (

@@ -1,0 +1,35 @@
+{
+  "Name": "zhajirii-security-headers",
+  "Comment": "HTTP security headers for Z-Hajirii CloudFront distribution",
+  "SecurityHeadersConfig": {
+    "ContentTypeOptions": {
+      "Override": true
+    },
+    "FrameOptions": {
+      "FrameOption": "DENY",
+      "Override": true
+    },
+    "XSSProtection": {
+      "Protection": true,
+      "ModeBlock": true,
+      "Override": true
+    },
+    "StrictTransportSecurity": {
+      "AccessControlMaxAgeSec": 31536000,
+      "IncludeSubdomains": true,
+      "Preload": true,
+      "Override": true
+    },
+    "ReferrerPolicy": {
+      "ReferrerPolicy": "strict-origin-when-cross-origin",
+      "Override": true
+    }
+  },
+  "RemoveHeadersConfig": {
+    "Quantity": 2,
+    "Items": [
+      { "Header": "X-Amz-Apigw-Id" },
+      { "Header": "X-Amzn-Trace-Id" }
+    ]
+  }
+}

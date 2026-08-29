@@ -151,7 +151,52 @@ app.get('/employees', async (req, res) => {
 
 app.post('/employees', async (req, res) => {
   try {
-    const { id, name, role, email, avatar_url, emp_id, active_now } = req.body;
+    const action = req.query.action;
+    const body = req.body;
+
+    // Batch delete
+    if (action === 'delete_in') {
+      const ids = body.ids || [];
+      if (!ids.length) return res.json({ deleted: 0 });
+      if (isPostgres()) {
+        const pool = await getPool();
+        const placeholders = ids.map((_, i) => `$${i + 1}`).join(', ');
+        const result = await pool.query(`DELETE FROM employees WHERE id IN (${placeholders})`, ids);
+        return res.json({ deleted: result.rowCount });
+      }
+      const before = memoryStore.employees.length;
+      memoryStore.employees = memoryStore.employees.filter((e) => !ids.includes(e.id));
+      return res.json({ deleted: before - memoryStore.employees.length });
+    }
+
+    // Update existing employee
+    if (action === 'update' || body.eq_col) {
+      const targetId = body.id || (body.eq_col === 'id' ? body.eq_val : null);
+      if (isPostgres()) {
+        const pool = await getPool();
+        const fields = [];
+        const values = [];
+        let i = 1;
+        if (body.name !== undefined)       { fields.push(`name = $${i++}`);       values.push(body.name); }
+        if (body.role !== undefined)       { fields.push(`role = $${i++}`);       values.push(body.role); }
+        if (body.email !== undefined)      { fields.push(`email = $${i++}`);      values.push(body.email); }
+        if (body.avatar_url !== undefined) { fields.push(`avatar_url = $${i++}`); values.push(body.avatar_url); }
+        if (body.emp_id !== undefined)     { fields.push(`emp_id = $${i++}`);     values.push(body.emp_id); }
+        if (body.active_now !== undefined) { fields.push(`active_now = $${i++}`); values.push(body.active_now); }
+        if (fields.length && targetId) {
+          values.push(targetId);
+          await pool.query(`UPDATE employees SET ${fields.join(', ')} WHERE id = $${i}`, values);
+          return res.json({ success: true });
+        }
+      } else {
+        const idx = memoryStore.employees.findIndex((e) => e.id === targetId);
+        if (idx >= 0) Object.assign(memoryStore.employees[idx], body);
+        return res.json({ success: true });
+      }
+    }
+
+    // Upsert
+    const { id, name, role, email, avatar_url, emp_id, active_now } = body;
     if (isPostgres()) {
       const pool = await getPool();
       await pool.query(
@@ -171,12 +216,7 @@ app.post('/employees', async (req, res) => {
 
     const idx = memoryStore.employees.findIndex((e) => e.id === id);
     const empData = {
-      id,
-      name,
-      role,
-      email,
-      avatar_url,
-      emp_id,
+      id, name, role, email, avatar_url, emp_id,
       active_now: active_now ?? true,
       created_at: idx >= 0 ? memoryStore.employees[idx].created_at : new Date().toISOString(),
     };
@@ -190,6 +230,7 @@ app.post('/employees', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 app.delete('/employees', async (req, res) => {
   try {
@@ -460,7 +501,53 @@ app.get('/tasks', async (req, res) => {
 
 app.post('/tasks', async (req, res) => {
   try {
-    const { id, user_id, title, description, priority, deadline, status, attachment, completed_at } = req.body;
+    const action = req.query.action;
+    const body = req.body;
+
+    // Batch delete
+    if (action === 'delete_in') {
+      const ids = body.ids || [];
+      if (!ids.length) return res.json({ deleted: 0 });
+      if (isPostgres()) {
+        const pool = await getPool();
+        const placeholders = ids.map((_, i) => `$${i + 1}`).join(', ');
+        const result = await pool.query(`DELETE FROM tasks WHERE id IN (${placeholders})`, ids);
+        return res.json({ deleted: result.rowCount });
+      }
+      const before = memoryStore.tasks.length;
+      memoryStore.tasks = memoryStore.tasks.filter((t) => !ids.includes(t.id));
+      return res.json({ deleted: before - memoryStore.tasks.length });
+    }
+
+    // Update
+    if (action === 'update' || body.eq_col) {
+      const targetId = body.id || (body.eq_col === 'id' ? body.eq_val : null);
+      if (isPostgres()) {
+        const pool = await getPool();
+        const fields = [];
+        const values = [];
+        let i = 1;
+        if (body.title !== undefined)        { fields.push(`title = $${i++}`);        values.push(body.title); }
+        if (body.description !== undefined)  { fields.push(`description = $${i++}`);  values.push(body.description); }
+        if (body.priority !== undefined)     { fields.push(`priority = $${i++}`);     values.push(body.priority); }
+        if (body.deadline !== undefined)     { fields.push(`deadline = $${i++}`);     values.push(body.deadline); }
+        if (body.status !== undefined)       { fields.push(`status = $${i++}`);       values.push(body.status); }
+        if (body.attachment !== undefined)   { fields.push(`attachment = $${i++}`);   values.push(body.attachment); }
+        if (body.completed_at !== undefined) { fields.push(`completed_at = $${i++}`); values.push(body.completed_at); }
+        if (fields.length && targetId) {
+          values.push(targetId);
+          await pool.query(`UPDATE tasks SET ${fields.join(', ')} WHERE id = $${i}`, values);
+          return res.json({ success: true });
+        }
+      } else {
+        const idx = memoryStore.tasks.findIndex((t) => t.id === targetId);
+        if (idx >= 0) Object.assign(memoryStore.tasks[idx], body);
+        return res.json({ success: true });
+      }
+    }
+
+    // Upsert
+    const { id, user_id, title, description, priority, deadline, status, attachment, completed_at } = body;
     if (isPostgres()) {
       const pool = await getPool();
       await pool.query(
@@ -532,10 +619,53 @@ app.get('/leave_requests', async (req, res) => {
 
 app.post('/leave_requests', async (req, res) => {
   try {
+    const action = req.query.action;
+    const body = req.body;
+
+    // Batch delete
+    if (action === 'delete_in') {
+      const ids = body.ids || [];
+      if (!ids.length) return res.json({ deleted: 0 });
+      if (isPostgres()) {
+        const pool = await getPool();
+        const placeholders = ids.map((_, i) => `$${i + 1}`).join(', ');
+        const result = await pool.query(`DELETE FROM leave_requests WHERE id IN (${placeholders})`, ids);
+        return res.json({ deleted: result.rowCount });
+      }
+      const before = memoryStore.leave_requests.length;
+      memoryStore.leave_requests = memoryStore.leave_requests.filter((l) => !ids.includes(l.id));
+      return res.json({ deleted: before - memoryStore.leave_requests.length });
+    }
+
+    // Update (e.g. approve/reject)
+    if (action === 'update' || body.eq_col) {
+      const targetId = body.id || (body.eq_col === 'id' ? body.eq_val : null);
+      if (isPostgres()) {
+        const pool = await getPool();
+        const fields = [];
+        const values = [];
+        let i = 1;
+        if (body.status !== undefined)        { fields.push(`status = $${i++}`);        values.push(body.status); }
+        if (body.admin_comment !== undefined) { fields.push(`admin_comment = $${i++}`); values.push(body.admin_comment); }
+        if (body.approved_by !== undefined)   { fields.push(`approved_by = $${i++}`);   values.push(body.approved_by); }
+        if (body.approved_at !== undefined)   { fields.push(`approved_at = $${i++}`);   values.push(body.approved_at); }
+        if (fields.length && targetId) {
+          values.push(targetId);
+          await pool.query(`UPDATE leave_requests SET ${fields.join(', ')} WHERE id = $${i}`, values);
+          return res.json({ success: true });
+        }
+      } else {
+        const idx = memoryStore.leave_requests.findIndex((l) => l.id === targetId);
+        if (idx >= 0) Object.assign(memoryStore.leave_requests[idx], body);
+        return res.json({ success: true });
+      }
+    }
+
+    // Upsert
     const {
       id, user_id, leave_type, from_date, to_date, total_days,
       reason, description, attachment, status, admin_comment, approved_by, approved_at
-    } = req.body;
+    } = body;
 
     if (isPostgres()) {
       const pool = await getPool();

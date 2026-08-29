@@ -43,13 +43,13 @@ app.post('/auth/login', async (req, res) => {
     if (isPostgres()) {
       const pool = await getPool();
       const result = await pool.query(
-        'SELECT * FROM users WHERE LOWER(username) = LOWER($1) AND status = $2',
+        'SELECT * FROM users WHERE LOWER(username) = LOWER($1) AND LOWER(status) = $2',
         [username.trim(), 'active']
       );
       user = result.rows[0] || null;
     } else {
       user = memoryStore.users.find(
-        (u) => u.username.toLowerCase() === username.trim().toLowerCase() && u.status === 'active'
+        (u) => u.username.toLowerCase() === username.trim().toLowerCase() && u.status.toLowerCase() === 'active'
       ) || null;
     }
 

@@ -63,15 +63,26 @@ app.post('/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid username or password.' });
     }
 
-    // Issue JWT token (24 hour expiry)
+    // Issue JWT token (24 hour expiry) — include employee_id so frontend can link attendance
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role },
+      { id: user.id, username: user.username, role: user.role, employeeId: user.employee_id || '' },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
 
-    // Never return password_hash to client
-    const { password_hash: _ph, ...safeUser } = user;
+    // Never return password_hash to client; normalize field names to camelCase for frontend
+    const { password_hash: _ph, ...rawUser } = user;
+    const safeUser = {
+      ...rawUser,
+      employeeId: rawUser.employee_id || '',
+      fullName:   rawUser.full_name || '',
+      phoneNumber: rawUser.phone_number || '',
+      joiningDate: rawUser.joining_date || '',
+      internType:  rawUser.intern_type || 'Online Intern',
+      managerId:   rawUser.manager_id || null,
+      createdAt:   rawUser.created_at,
+      updatedAt:   rawUser.updated_at,
+    };
 
     return res.json({ token, user: safeUser });
   } catch (err) {

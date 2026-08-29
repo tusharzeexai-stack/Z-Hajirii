@@ -5,6 +5,46 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "http://43.204.218.180:3001/:path*"
+    },
+    {
+      "source": "/users",
+      "destination": "http://43.204.218.180:3001/users"
+    },
+    {
+      "source": "/employees",
+      "destination": "http://43.204.218.180:3001/employees"
+    },
+    {
+      "source": "/attendance_logs",
+      "destination": "http://43.204.218.180:3001/attendance_logs"
+    },
+    {
+      "source": "/tasks",
+      "destination": "http://43.204.218.180:3001/tasks"
+    },
+    {
+      "source": "/leave_requests",
+      "destination": "http://43.204.218.180:3001/leave_requests"
+    },
+    {
+      "source": "/notifications",
+      "destination": "http://43.204.218.180:3001/notifications"
+    },
+    {
+      "source": "/chat_messages",
+      "destination": "http://43.204.218.180:3001/chat_messages"
+    },
+    {
+      "source": "/audit_logs",
+      "destination": "http://43.204.218.180:3001/audit_logs"
+    },
+    {
+      "source": "/health",
+      "destination": "http://43.204.218.180:3001/health"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

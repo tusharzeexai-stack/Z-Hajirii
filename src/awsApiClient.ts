@@ -13,14 +13,7 @@
  * All methods return { data, error } to match Supabase SDK behavior.
  */
 
-const API_BASE = (import.meta as any).env.VITE_API_GATEWAY_URL as string;
-
-if (!API_BASE) {
-  console.warn(
-    '[awsApiClient] VITE_API_GATEWAY_URL is not set. ' +
-    'Set it in your .env file after deploying the CloudFormation stack.'
-  );
-}
+const API_BASE = (import.meta as any).env.VITE_API_GATEWAY_URL || '/api';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -29,10 +22,23 @@ async function apiFetch(
   options: RequestInit = {}
 ): Promise<{ data: any; error: any }> {
   try {
-    const res = await fetch(`${API_BASE}${path}`, {
+    const baseUrl = (API_BASE || '/api').replace(/\/$/, '');
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    const targetUrl = baseUrl.startsWith('http')
+      ? `${baseUrl}${cleanPath}`
+      : `${baseUrl}${cleanPath}`;
+
+    const res = await fetch(targetUrl, {
       headers: { 'Content-Type': 'application/json' },
       ...options,
     });
+
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      const text = await res.text();
+      return { data: null, error: { message: text.substring(0, 100) || `HTTP ${res.status}` } };
+    }
+
     const json = await res.json();
     if (!res.ok) {
       return { data: null, error: { message: json.error || `HTTP ${res.status}` } };

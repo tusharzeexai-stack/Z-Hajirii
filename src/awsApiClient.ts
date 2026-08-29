@@ -105,13 +105,16 @@ async function apiFetch(
       ? `${baseUrl}${cleanPath}`
       : `${baseUrl}${cleanPath}`;
 
+    const token = tokenStore.getToken();
+    const reqHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers as Record<string, string> || {}),
+    };
+
     const res = await fetch(targetUrl, {
-      headers: { 'Content-Type': 'application/json' },
       ...options,
-      headers: {
-        ...headers,
-        ...(options.headers as Record<string, string> || {}),
-      },
+      headers: reqHeaders,
     });
 
     const contentType = res.headers.get('content-type') || '';

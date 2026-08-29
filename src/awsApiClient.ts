@@ -337,6 +337,12 @@ export async function loginWithCredentials(
     body: JSON.stringify({ username, password }),
   });
 
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const text = await res.text();
+    throw new Error(`Server error: ${text.substring(0, 120)}`);
+  }
+
   const json = await res.json();
 
   if (!res.ok) {

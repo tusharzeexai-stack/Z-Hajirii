@@ -6,12 +6,15 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import { getPool, isPostgres, memoryStore } from './db.js';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const JWT_SECRET = process.env.JWT_SECRET || 'zhajirii-secret-key-2026';
 
 app.use(cors());
 app.use(express.json());
@@ -24,6 +27,110 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// ── AUTH ROUTES ───────────────────────────────────────────────────────────────
+
+// POST /auth/login
+app.post('/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required.' });
+    }
+
+    let user = null;
+
+    if (isPostgres()) {
+      const pool = await getPool();
+      const result = await pool.query(
+        'SELECT * FROM users WHERE LOWER(username) = LOWER($1) AND status = $2',
+        [username.trim(), 'active']
+      );
+      user = result.rows[0] || null;
+    } else {
+      user = memoryStore.users.find(
+        (u) => u.username.toLowerCase() === username.trim().toLowerCase() && u.status === 'active'
+      ) || null;
+    }
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid username or password.' });
+    }
+
+    // Verify password against stored hash
+    const isValid = await bcrypt.compare(password, user.password_hash);
+    if (!isValid) {
+      return res.status(401).json({ error: 'Invalid username or password.' });
+    }
+
+    // Issue JWT token (24 hour expiry)
+    const token = jwt.sign(
+      { id: user.id, username: user.username, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    // Never return password_hash to client
+    const { password_hash: _ph, ...safeUser } = user;
+
+    return res.json({ token, user: safeUser });
+  } catch (err) {
+    console.error('[auth/login] Error:', err.message);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// POST /auth/change-password
+app.post('/auth/change-password', async (req, res) => {
+  try {
+    const { old_password, new_password } = req.body;
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.replace('Bearer ', '').trim();
+
+    if (!token) return res.status(401).json({ error: 'Unauthorized.' });
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: 'Invalid or expired token.' });
+    }
+
+    let user = null;
+    if (isPostgres()) {
+      const pool = await getPool();
+      const result = await pool.query('SELECT * FROM users WHERE id = $1', [decoded.id]);
+      user = result.rows[0] || null;
+    } else {
+      user = memoryStore.users.find((u) => u.id === decoded.id) || null;
+    }
+
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+
+    const isValid = await bcrypt.compare(old_password, user.password_hash);
+    if (!isValid) return res.status(401).json({ error: 'Current password is incorrect.' });
+
+    const newHash = await bcrypt.hash(new_password, 12);
+
+    if (isPostgres()) {
+      const pool = await getPool();
+      await pool.query(
+        'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+        [newHash, user.id]
+      );
+    } else {
+      const idx = memoryStore.users.findIndex((u) => u.id === user.id);
+      if (idx >= 0) memoryStore.users[idx].password_hash = newHash;
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[auth/change-password] Error:', err.message);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+
 
 // ── 1. EMPLOYEES ─────────────────────────────────────────────────────────────
 app.get('/employees', async (req, res) => {

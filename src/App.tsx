@@ -7264,39 +7264,39 @@ export default function App() {
                                 return (
                                   <tr key={log.id} className="hover:bg-primary/5 transition-colors">
                                     <td className="px-6 py-4 font-semibold text-sm">{log.date}</td>
-                                    <td className="px-6 py-4 text-sm text-on-surface-variant">
-                                      {isEditing ? (
-                                        <input
-                                          type="time"
-                                          disabled={editStatus === 'Absent'}
-                                          value={editClockIn}
-                                          onChange={(e) => setEditClockIn(e.target.value)}
-                                          className="bg-white border border-outline-variant rounded p-1 text-sm outline-none focus:ring-1 focus:ring-primary w-28"
-                                        />
-                                      ) : selectedEmployeeForProfile && log.date === todayDateString && (log.status === 'Present' || log.status === 'Late') && (log.clockOut === '--:--' || !log.clockOut) ? (
-                                        <button
-                                          onClick={() => handleClockOut(selectedEmployeeForProfile.id)}
-                                          className="px-2 py-0.5 bg-primary text-on-primary font-bold text-[10px] rounded hover:brightness-110 active:scale-95 transition-all cursor-pointer shadow-sm"
-                                        >
-                                          Clock Out
-                                        </button>
-                                      ) : (
-                                        log.clockOut
-                                      )}
-                                    </td>
-                                    <td className="px-6 py-4 text-sm text-on-surface-variant">
-                                      {isEditing ? (
-                                        <input
-                                          type="time"
-                                          disabled={editStatus === 'Absent'}
-                                          value={editClockOut}
-                                          onChange={(e) => setEditClockOut(e.target.value)}
-                                          className="bg-white border border-outline-variant rounded p-1 text-sm outline-none focus:ring-1 focus:ring-primary w-28"
-                                        />
-                                      ) : (
-                                        log.clockOut
-                                      )}
-                                    </td>
+                                     <td className="px-6 py-4 text-sm text-on-surface-variant">
+                                       {isEditing ? (
+                                         <input
+                                           type="time"
+                                           disabled={editStatus === 'Absent'}
+                                           value={editClockIn}
+                                           onChange={(e) => setEditClockIn(e.target.value)}
+                                           className="bg-white border border-outline-variant rounded p-1 text-sm outline-none focus:ring-1 focus:ring-primary w-28"
+                                         />
+                                       ) : (
+                                         log.clockIn
+                                       )}
+                                     </td>
+                                     <td className="px-6 py-4 text-sm text-on-surface-variant">
+                                       {isEditing ? (
+                                         <input
+                                           type="time"
+                                           disabled={editStatus === 'Absent'}
+                                           value={editClockOut}
+                                           onChange={(e) => setEditClockOut(e.target.value)}
+                                           className="bg-white border border-outline-variant rounded p-1 text-sm outline-none focus:ring-1 focus:ring-primary w-28"
+                                         />
+                                       ) : selectedEmployeeForProfile && log.date === todayDateString && (log.status === 'Present' || log.status === 'Late') && (log.clockOut === '--:--' || !log.clockOut) ? (
+                                         <button
+                                           onClick={() => handleClockOut(selectedEmployeeForProfile.id)}
+                                           className="px-2 py-0.5 bg-primary text-on-primary font-bold text-[10px] rounded hover:brightness-110 active:scale-95 transition-all cursor-pointer shadow-sm"
+                                         >
+                                           Clock Out
+                                         </button>
+                                       ) : (
+                                         log.clockOut
+                                       )}
+                                     </td>
                                     <td className="px-6 py-4 text-sm font-semibold text-primary">
                                       {isEditing ? (
                                         calculateDuration(

@@ -313,6 +313,21 @@ app.post('/users', async (req, res) => {
 
     if (isPostgres()) {
       const pool = await getPool();
+
+      // Ensure referenced employee exists in employees table to prevent FK constraint error
+      if (employee_id) {
+        const empCheck = await pool.query('SELECT id FROM employees WHERE id = $1', [employee_id]);
+        if (empCheck.rows.length === 0) {
+          const fallbackEmpId = employee_id.startsWith('ZH-INT-') ? employee_id : `ZH-INT-${employee_id.replace('zh-int-', '')}`;
+          await pool.query(
+            `INSERT INTO employees (id, name, role, email, avatar_url, emp_id, active_now)
+             VALUES ($1, $2, $3, $4, $5, $6, true)
+             ON CONFLICT (id) DO NOTHING`,
+            [employee_id, full_name || username, designation || 'Intern', email || '', '', fallbackEmpId]
+          );
+        }
+      }
+
       await pool.query(
         `INSERT INTO users
            (id, username, password_hash, full_name, email, employee_id, department, designation,

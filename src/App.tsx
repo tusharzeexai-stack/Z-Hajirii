@@ -900,6 +900,28 @@ export default function App() {
     }
   };
 
+  const fetchEmployees = async () => {
+    try {
+      const { data, error } = await supabase.from('employees').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      const mapped: Employee[] = (data || []).map(emp => ({
+        id: emp.id,
+        name: emp.name,
+        role: emp.role,
+        email: emp.email,
+        avatarUrl: emp.avatar_url,
+        empId: emp.emp_id,
+        activeNow: emp.active_now,
+        createdAt: emp.created_at
+      }));
+      setEmployees(mapped);
+      return mapped;
+    } catch (err: any) {
+      console.warn('fetchEmployees failed:', err.message);
+      return [];
+    }
+  };
+
   const saveUser = async (user: UserRecord) => {
     const dbUser = {
       id: user.id,
@@ -1466,6 +1488,14 @@ export default function App() {
       setLoading(false);
     }
   };
+
+  // Refresh data when switching to Z-Lab Hired tab
+  useEffect(() => {
+    if (currentTab === 'ZLabHired' && isLoggedIn) {
+      fetchUsers();
+      fetchEmployees();
+    }
+  }, [currentTab, isLoggedIn]);
 
   // Persistent Session Loader — verifies signed JWT token (tamper-proof)
   useEffect(() => {

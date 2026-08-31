@@ -43,10 +43,8 @@ export default function ZLabHired({
     return users.filter((u) => {
       const isMigrated =
         u.department === 'Z-Lab Hired' ||
-        u.department === 'Internship' ||
         (u.employeeId && u.employeeId.startsWith('ZH-INT-')) ||
-        (u.id && u.id.startsWith('zh-int-')) ||
-        u.internType !== undefined;
+        (u.id && u.id.startsWith('zh-int-'));
       return isMigrated;
     });
   }, [users]);

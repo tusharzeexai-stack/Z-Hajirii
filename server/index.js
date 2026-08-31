@@ -300,11 +300,16 @@ app.post('/users', async (req, res) => {
     }
 
     // Upsert User
-    const {
+    let {
       id, username, password_hash, full_name, email, employee_id,
       department, designation, phone_number, joining_date,
       role, status, intern_type, manager_id
     } = body;
+
+    // Normalize role & status for Z-Hajirii schema compatibility
+    if (!role || role.toLowerCase() === 'intern') role = 'Employee';
+    if (!status || status.toLowerCase() === 'active') status = 'Active';
+    if (!department || department.toLowerCase() === 'internship') department = 'Z-Lab Hired';
 
     if (isPostgres()) {
       const pool = await getPool();

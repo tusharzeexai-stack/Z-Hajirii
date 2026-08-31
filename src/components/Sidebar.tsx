@@ -12,7 +12,8 @@ import {
   Settings,
   FileText,
   Award,
-  MessageSquare
+  MessageSquare,
+  GraduationCap
 } from 'lucide-react';
 import { ViewTab } from '../types';
 
@@ -139,6 +140,18 @@ export default function Sidebar({
             >
               <CheckSquare className={`w-5 h-5 ${currentTab === 'TaskDone' ? 'text-primary' : 'text-on-surface-variant group-hover:text-primary'}`} />
               <span className="font-semibold text-sm">Task Done</span>
+            </button>
+
+            <button
+              onClick={() => onTabChange('ZLabHired')}
+              className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-lg transition-all text-left group ${
+                currentTab === 'ZLabHired'
+                  ? 'text-primary bg-surface-container-high border-l-4 border-primary font-bold'
+                  : 'text-on-surface-variant hover:bg-surface-container-low hover:text-primary'
+              }`}
+            >
+              <GraduationCap className={`w-5 h-5 ${currentTab === 'ZLabHired' ? 'text-primary' : 'text-on-surface-variant group-hover:text-primary'}`} />
+              <span className="font-semibold text-sm">Z-Lab Hired</span>
             </button>
 
             <button

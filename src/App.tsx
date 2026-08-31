@@ -55,6 +55,7 @@ import {
 import { INITIAL_EMPLOYEES, INITIAL_ATTENDANCE_LOGS } from './data';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
+import ZLabHired from './components/ZLabHired';
 import { supabase, loginWithCredentials, setAuthToken, clearAuthToken, getAuthToken, getClaimsFromToken, changePassword, adminSetPassword } from './awsApiClient';
 import { tokenStore } from './tokenStore';
 
@@ -7749,6 +7750,43 @@ export default function App() {
                       )}
                     </div>
                   </div>
+                )}
+
+                {/* 13. Z-LAB HIRED VIEW */}
+                {currentTab === 'ZLabHired' && (
+                  <ZLabHired
+                    users={users}
+                    employees={employees}
+                    onViewAttendanceProfile={(user) => {
+                      const emp = employees.find((e) => e.id === user.employeeId);
+                      if (emp) {
+                        setSelectedEmployeeForProfile(emp);
+                        setCurrentTab('Reports');
+                      } else {
+                        alert(`Viewing profile for ${user.fullName} (${user.email})`);
+                      }
+                    }}
+                    onToggleUserStatus={async (user) => {
+                      const newStatus = user.status.toLowerCase() === 'active' ? 'Disabled' : 'Active';
+                      try {
+                        await supabase.from('users').update({ status: newStatus }).eq('id', user.id);
+                        setUsers((prev) =>
+                          prev.map((u) => (u.id === user.id ? { ...u, status: newStatus as any } : u))
+                        );
+                      } catch (err: any) {
+                        alert(err.message || 'Failed to update user status');
+                      }
+                    }}
+                    onDeleteUser={async (userId) => {
+                      if (!window.confirm('Are you sure you want to remove this intern from Z-Hajirii?')) return;
+                      try {
+                        await supabase.from('users').delete().eq('id', userId);
+                        setUsers((prev) => prev.filter((u) => u.id !== userId));
+                      } catch (err: any) {
+                        alert(err.message || 'Failed to delete user');
+                      }
+                    }}
+                  />
                 )}
               </>
             )}

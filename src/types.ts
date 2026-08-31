@@ -39,7 +39,8 @@ export type ViewTab =
   | 'AdminTeamLeaders'
   | 'AdminTLTasks'
   | 'TeamChat'
-  | 'TaskDone';
+  | 'TaskDone'
+  | 'ZLabHired';
 
 export interface AttendanceStats {
   totalEmployees: number;

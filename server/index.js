@@ -314,6 +314,17 @@ app.post('/users', async (req, res) => {
     if (isPostgres()) {
       const pool = await getPool();
 
+      // Check if a user with the same username or email already exists under a different ID to prevent unique constraint 500 error
+      if (username || email) {
+        const dupCheck = await pool.query(
+          `SELECT id FROM users WHERE LOWER(username) = LOWER($1) OR (email IS NOT NULL AND email != '' AND LOWER(email) = LOWER($2))`,
+          [username || '', email || '']
+        );
+        if (dupCheck.rows.length > 0) {
+          id = dupCheck.rows[0].id;
+        }
+      }
+
       // Ensure referenced employee exists in employees table to prevent FK constraint error
       if (employee_id) {
         const empCheck = await pool.query('SELECT id FROM employees WHERE id = $1', [employee_id]);
@@ -355,7 +366,9 @@ app.post('/users', async (req, res) => {
       return res.json({ success: true });
     }
 
-    const idx = memoryStore.users.findIndex((u) => u.id === id);
+    const idx = memoryStore.users.findIndex((u) => u.id === id || (username && u.username.toLowerCase() === username.toLowerCase()));
+    if (idx >= 0) id = memoryStore.users[idx].id;
+
     const userData = {
       id, username, password_hash, full_name, email, employee_id,
       department, designation, phone_number, joining_date,
